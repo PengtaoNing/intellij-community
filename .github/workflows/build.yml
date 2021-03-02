@@ -1,0 +1,15 @@
+name: build idea
+on: push
+jobs:
+ setup-graalvm:
+   runs-on: windows-latest
+   steps:
+    - uses: rinx/setup-graalvm-ce@v0.0.5
+      with:
+        graalvm-version: 20.2.0
+        java-version: java11
+        native-image: true
+        run: |
+         java -version
+         native-image --version
+    
