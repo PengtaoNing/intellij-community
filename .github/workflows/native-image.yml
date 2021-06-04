@@ -18,6 +18,6 @@ jobs:
           graalvm-version: "20.2.0"
           java-version: "java11"
           native-image: "true"
-      - name: version
+      - name: build
         run: |
           ant
