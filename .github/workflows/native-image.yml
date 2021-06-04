@@ -5,6 +5,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        name: checkout idea
+      - uses: actions/checkout@v2
+        name: checkout android
+        with:
+          repository: PengtaoNing/android
+          path: android
+          ref: master
       - name: setup-graalvm-ce
         uses: rinx/setup-graalvm-ce@v0.0.5
         with:
