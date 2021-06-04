@@ -12,5 +12,4 @@ jobs:
           native-image: "true"
       - name: version
         run: |
-          java -version
-          native-image --version
+          ant
