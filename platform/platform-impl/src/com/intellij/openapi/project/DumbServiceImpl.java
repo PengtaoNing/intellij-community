@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.project;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -11,7 +11,7 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.cl.PluginAwareClassLoader;
-import com.intellij.internal.statistic.IdeActivity;
+import com.intellij.internal.statistic.StructuredIdeActivity;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.Application;
@@ -45,7 +45,6 @@ import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.ex.ProgressIndicatorEx;
 import com.intellij.openapi.wm.ex.StatusBarEx;
-import com.intellij.util.exception.FrequentErrorLogger;
 import com.intellij.util.indexing.IndexingBundle;
 import com.intellij.util.ui.DeprecationStripePanel;
 import com.intellij.util.ui.UIUtil;
@@ -67,7 +66,6 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
     = new ExtensionPointName<>("com.intellij.requiredForSmartModeStartupActivity");
 
   private static final Logger LOG = Logger.getInstance(DumbServiceImpl.class);
-  private static final FrequentErrorLogger ourErrorLogger = FrequentErrorLogger.newInstance(LOG);
   private final AtomicReference<State> myState;
   private volatile Throwable myDumbEnterTrace;
   private volatile Throwable myDumbStart;
@@ -209,7 +207,7 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
   public boolean isDumb() {
     if (!ApplicationManager.getApplication().isReadAccessAllowed() &&
         Registry.is("ide.check.is.dumb.contract")) {
-      ourErrorLogger.error("To avoid race conditions isDumb method should be used only under read action or in EDT thread.",
+      LOG.error("To avoid race conditions isDumb method should be used only under read action or in EDT thread.",
                            new IllegalStateException());
     }
     return myState.get() != State.SMART;
@@ -606,40 +604,39 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
     try (ProgressSuspender suspender = ProgressSuspender.markSuspendable(visibleIndicator, IdeBundle.message("progress.text.indexing.paused"))) {
       myHeavyActivities.setCurrentSuspenderAndSuspendIfRequested(suspender);
 
-      IdeActivity activity = IdeActivity.started(myProject, "indexing");
-      final ShutDownTracker shutdownTracker = ShutDownTracker.getInstance();
-      final Thread self = Thread.currentThread();
-      try {
-        shutdownTracker.registerStopperThread(self);
+      StructuredIdeActivity activity = IndexingStatisticsCollector.INDEXING_ACTIVITY.started(myProject);
 
-        DumbServiceAppIconProgress.registerForProgress(myProject, (ProgressIndicatorEx)visibleIndicator);
-        ProgressIndicatorEx relayToVisibleIndicator = new RelayUiToDelegateIndicator(visibleIndicator);
+      ShutDownTracker.getInstance().executeWithStopperThread(Thread.currentThread(), ()-> {
+        try {
+          DumbServiceAppIconProgress.registerForProgress(myProject, (ProgressIndicatorEx)visibleIndicator);
+          ProgressIndicatorEx relayToVisibleIndicator = new RelayUiToDelegateIndicator(visibleIndicator);
 
-        myGuiDumbTaskRunner.processTasksWithProgress(activity, taskIndicator -> {
-          suspender.attachToProgress(taskIndicator);
-          taskIndicator.addStateDelegate(relayToVisibleIndicator);
-        },
-        taskIndicator -> {
-          ((AbstractProgressIndicatorExBase)taskIndicator).removeStateDelegate(relayToVisibleIndicator);
+          myGuiDumbTaskRunner.processTasksWithProgress(activity, taskIndicator -> {
+                                                         suspender.attachToProgress(taskIndicator);
+                                                         taskIndicator.addStateDelegate(relayToVisibleIndicator);
+                                                       },
+                                                       taskIndicator -> {
+                                                         ((AbstractProgressIndicatorExBase)taskIndicator)
+                                                           .removeStateDelegate(relayToVisibleIndicator);
+                                                       }
+          );
         }
-        );
-      }
-      catch (Throwable unexpected) {
-        LOG.error(unexpected);
-      }
-      finally {
-        shutdownTracker.unregisterStopperThread(self);
-        // myCurrentSuspender should already be null at this point unless we got here by exception. In any case, the suspender might have
-        // got suspended after the the last dumb task finished (or even after the last check cancelled call). This case is handled by
-        // the ProgressSuspender close() method called at the exit of this try-with-resources block which removes the hook if it has been
-        // previously installed.
-        myHeavyActivities.resetCurrentSuspender();
+        catch (Throwable unexpected) {
+          LOG.error(unexpected);
+        }
+        finally {
+          // myCurrentSuspender should already be null at this point unless we got here by exception. In any case, the suspender might have
+          // got suspended after the last dumb task finished (or even after the last check cancelled call). This case is handled by
+          // the ProgressSuspender close() method called at the exit of this try-with-resources block which removes the hook if it has been
+          // previously installed.
+          myHeavyActivities.resetCurrentSuspender();
 
-        //this used to be called in EDT from getNextTask(), but moved it here to simplify
-        queueUpdateFinished();
+          //this used to be called in EDT from getNextTask(), but moved it here to simplify
+          queueUpdateFinished();
 
-        activity.finished();
-      }
+          activity.finished();
+        }
+      });
     }
   }
 

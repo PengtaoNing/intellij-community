@@ -26,6 +26,12 @@ abstract class TaskContext : LearningDslBase {
 
   open val taskId: TaskId = TaskId(0)
 
+  /**
+   * This property can be set to the true if you want that the next task restore will jump over the current task.
+   * Default `null` value is reserved for the future automatic transparent restore calculation.
+   */
+  open var transparentRestore: Boolean? = null
+
   /** Put here some initialization for the task */
   open fun before(preparation: TaskRuntimeContext.() -> Unit) = Unit
 
@@ -45,6 +51,9 @@ abstract class TaskContext : LearningDslBase {
     }
   }
 
+  /** Restore when timer is out. Is needed for chained tasks. */
+  open fun restoreByTimer(delayMillis: Int = 2000, restoreId: TaskId? = null) = Unit
+
   data class RestoreNotification(@Nls val message: String,
                                  @Nls val restoreLinkText: String = LearnBundle.message("learn.restore.default.link.text"),
                                  val callback: () -> Unit)
@@ -63,7 +72,7 @@ abstract class TaskContext : LearningDslBase {
   /** Insert text in the current position */
   open fun type(text: String) = Unit
   /** Write a text to the learn panel (panel with a learning tasks). */
-  open fun runtimeText(@Nls callback: TaskRuntimeContext.() -> String?) = Unit
+  open fun runtimeText(@Nls callback: RuntimeTextContext.() -> String?) = Unit
 
   /** Simply wait until an user perform particular action */
   open fun trigger(actionId: String) = Unit
@@ -206,7 +215,7 @@ abstract class TaskContext : LearningDslBase {
     caret(line, column)
   }
 
-  class DoneStepContext(val future: CompletableFuture<Boolean>, rt: TaskRuntimeContext) : TaskRuntimeContext(rt) {
+  class DoneStepContext(private val future: CompletableFuture<Boolean>, rt: TaskRuntimeContext) : TaskRuntimeContext(rt) {
     fun completeStep() {
       ApplicationManager.getApplication().assertIsDispatchThread()
       if (!future.isDone && !future.isCancelled) {

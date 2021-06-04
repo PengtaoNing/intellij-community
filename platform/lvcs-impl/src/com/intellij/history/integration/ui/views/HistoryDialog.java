@@ -66,7 +66,7 @@ public abstract class HistoryDialog<T extends HistoryDialogModel> extends FrameW
   protected final IdeaGateway myGateway;
   protected final VirtualFile myFile;
   private Splitter mySplitter;
-  private RevisionsList myRevisionsList;
+  protected RevisionsList myRevisionsList;
   private JBLoadingPanel myDiffView;
   private ActionToolbar myToolBar;
 
@@ -189,12 +189,13 @@ public abstract class HistoryDialog<T extends HistoryDialogModel> extends FrameW
         scheduleDiffUpdate(Couple.of(first, last));
       }
     });
-    addPopupMenuToComponent(myRevisionsList.getComponent(), actions);
+    PopupHandler.installPopupMenu(myRevisionsList.getComponent(), actions, "LvcsRevisionsListPopup");
 
 
     JPanel result = new JPanel(new BorderLayout());
     JPanel toolBarPanel = new JPanel(new BorderLayout());
-    toolBarPanel.add(myToolBar.getComponent());
+    toolBarPanel.add(myToolBar.getComponent(), BorderLayout.WEST);
+    addExtraToolbar(toolBarPanel);
     if (prefToolBarSize != null) {
       toolBarPanel.setPreferredSize(new Dimension(1, prefToolBarSize.height));
     }
@@ -204,6 +205,9 @@ public abstract class HistoryDialog<T extends HistoryDialogModel> extends FrameW
     result.add(scrollPane, BorderLayout.CENTER);
 
     return result;
+  }
+
+  protected void addExtraToolbar(JPanel toolBarPanel) {
   }
 
   private static ActionToolbar createRevisionsToolbar(ActionGroup actions) {
@@ -220,31 +224,11 @@ public abstract class HistoryDialog<T extends HistoryDialogModel> extends FrameW
     return result;
   }
 
-  private static void addPopupMenuToComponent(JComponent comp, final ActionGroup ag) {
-    comp.addMouseListener(new PopupHandler() {
-      @Override
-      public void invokePopup(Component c, int x, int y) {
-        ActionPopupMenu m = createPopupMenu(ag);
-        m.getComponent().show(c, x, y);
-      }
-    });
-  }
-
-  private static ActionPopupMenu createPopupMenu(ActionGroup ag) {
-    ActionManager m = ActionManager.getInstance();
-    return m.createActionPopupMenu(ActionPlaces.UNKNOWN, ag);
-  }
-
   private void scheduleDiffUpdate(@Nullable final Couple<Integer> toSelect) {
     doScheduleUpdate(UPDATE_DIFFS, () -> {
       synchronized (myModel) {
-        if (toSelect == null) {
-          myModel.resetSelection();
-        }
-        else {
-          myModel.selectRevisions(toSelect.first, toSelect.second);
-        }
-        return doUpdateDiffs(myModel);
+        boolean changed = toSelect == null ? myModel.resetSelection() : myModel.selectRevisions(toSelect.first, toSelect.second);
+        return changed ? doUpdateDiffs(myModel) : EmptyRunnable.getInstance();
       }
     });
   }

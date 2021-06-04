@@ -285,7 +285,12 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
   boolean isAutoScrollMode() {
     String activeToolWindowId = ToolWindowManager.getInstance(getProject()).getActiveToolWindowId();
     return myGlobalInspectionContext.getUIOptions().AUTOSCROLL_TO_SOURCE &&
-           (activeToolWindowId == null || activeToolWindowId.equals(ProblemsView.ID));
+           (activeToolWindowId == null
+            || activeToolWindowId.equals(ProblemsView.ID)
+            // TODO: compatibility mode for Rider where there's no problems view; remove in 2021.2
+            // see RIDER-59000
+            //noinspection deprecation
+            || activeToolWindowId.equals(ToolWindowId.INSPECTION));
   }
 
   public void setApplyingFix(boolean applyingFix) {
@@ -769,11 +774,17 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
                                     @NotNull GlobalInspectionContextImpl context,
                                     @NotNull InspectionRVContentProvider contentProvider) {
     for (Tools currentTools : tools) {
-      for (ScopeToolState state : contentProvider.getTools(currentTools)) {
-        InspectionToolWrapper toolWrapper = state.getTool();
-        if (context.getPresentation(toolWrapper).hasReportedProblems() || contentProvider.checkReportedProblems(context, toolWrapper)) {
-          return true;
+      boolean hasProblems = ReadAction.compute(() -> {
+        for (ScopeToolState state : contentProvider.getTools(currentTools)) {
+          InspectionToolWrapper toolWrapper = state.getTool();
+          if (context.getPresentation(toolWrapper).hasReportedProblems() || contentProvider.checkReportedProblems(context, toolWrapper)) {
+            return true;
+          }
         }
+        return false;
+      });
+      if (hasProblems) {
+        return true;
       }
     }
     return false;

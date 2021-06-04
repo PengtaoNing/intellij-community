@@ -16,6 +16,7 @@ public enum JavaElementKind {
   ANNOTATION("element.annotation"),
   ANONYMOUS_CLASS("element.anonymous_class"),
   CLASS("element.class"),
+  TYPE_PARAMETER("element.type.parameter"),
   CONSTANT("element.constant"),
   CONSTRUCTOR("element.constructor"),
   ENUM("element.enum"),
@@ -39,7 +40,8 @@ public enum JavaElementKind {
   THROWS_LIST("element.throws.list"),
   EXTENDS_LIST("element.extends.list"),
   RECEIVER_PARAMETER("element.receiver.parameter"),
-  METHOD_CALL("element.method.call");
+  METHOD_CALL("element.method.call"),
+  TYPE_ARGUMENTS("element.type.arguments");
   
   private final @PropertyKey(resourceBundle = JavaPsiBundle.BUNDLE) String propertyKey;
 
@@ -76,6 +78,7 @@ public enum JavaElementKind {
         return VARIABLE;
       case CONSTANT:
         return FIELD;
+      case TYPE_PARAMETER:
       case ANONYMOUS_CLASS:
         return CLASS;
       default:
@@ -105,6 +108,9 @@ public enum JavaElementKind {
       if (psiClass.isInterface()) {
         return INTERFACE;
       }
+      if (psiClass instanceof PsiTypeParameter) {
+        return TYPE_PARAMETER;
+      }
       return CLASS;
     }
     if (element instanceof PsiMethod) {
@@ -125,6 +131,9 @@ public enum JavaElementKind {
         return CONSTANT;
       }
       return FIELD;
+    }
+    if (element instanceof PsiReferenceParameterList) {
+      return TYPE_ARGUMENTS;
     }
     if (element instanceof PsiReferenceList) {
       PsiReferenceList.Role role = ((PsiReferenceList)element).getRole();

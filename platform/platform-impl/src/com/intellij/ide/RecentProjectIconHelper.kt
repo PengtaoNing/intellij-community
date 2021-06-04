@@ -4,14 +4,20 @@ package com.intellij.ide
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.Pair
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.ui.IconDeferrer
+import com.intellij.ui.JBColor
 import com.intellij.ui.scale.JBUIScale
+import com.intellij.ui.scale.ScaleContext
+import com.intellij.ui.scale.ScaleContextAware
+import com.intellij.util.IconUtil
 import com.intellij.util.ImageLoader
 import com.intellij.util.io.basicAttributesIfExists
 import com.intellij.util.io.exists
 import com.intellij.util.ui.*
 import org.imgscalr.Scalr
 import org.jetbrains.annotations.SystemIndependent
+import java.awt.Color
 import java.awt.Component
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -20,6 +26,9 @@ import java.net.MalformedURLException
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.swing.Icon
+import kotlin.io.path.extension
+import kotlin.io.path.nameWithoutExtension
+import kotlin.math.max
 
 private val LOG = logger<RecentProjectIconHelper>()
 
@@ -28,6 +37,22 @@ internal class RecentProjectIconHelper {
     @JvmStatic
     fun createIcon(file: Path): Icon? {
       try {
+        if ("svg" == file.extension.toLowerCase()) {
+          return IconDeferrer.getInstance().defer(EmptyIcon.create(projectIconSize()), Pair(file.toAbsolutePath(), StartupUiUtil.isUnderDarcula())) {
+            val icon = IconLoader.findIcon(file.toUri().toURL(), false)
+            if (icon != null) {
+              if (icon is ScaleContextAware) {
+                icon.updateScaleContext(ScaleContext.create())
+              }
+
+              val iconSize = max(icon.iconWidth, icon.iconHeight)
+              if (iconSize == projectIconSize()) return@defer icon
+              return@defer IconUtil.scale(icon, null, projectIconSize().toFloat() / iconSize)
+            }
+
+            icon
+          }
+        }
         val image = ImageLoader.loadFromUrl(file.toUri().toURL()) ?: return null
         val targetSize = if (UIUtil.isRetina()) 32 else JBUI.pixScale(16f).toInt()
         return toRetinaAwareIcon(Scalr.resize(ImageUtil.toBufferedImage(image), Scalr.Method.ULTRA_QUALITY, targetSize))
@@ -37,23 +62,33 @@ internal class RecentProjectIconHelper {
       }
       return null
     }
+
+    @JvmStatic
+    private val projectIcons = HashMap<String, MyIcon>()
+
+    @JvmStatic
+    fun refreshProjectIcon(path: @SystemIndependent String) {
+      projectIcons.remove(path)
+    }
+
+    @JvmStatic
+    fun projectIconSize() = Registry.intValue("ide.project.icon.size", 20)
   }
 
-  private val projectIcons = HashMap<String, MyIcon>()
-
   fun getProjectIcon(path: @SystemIndependent String, isDark: Boolean, generateFromName: Boolean = false): Icon {
-    val icon = projectIcons.get(path)
+    val icon = projectIcons[path]
     if (icon != null) {
       return icon.icon
     }
     if (!RecentProjectsManagerBase.isFileSystemPath(path)) {
-      return EmptyIcon.ICON_16
+      return EmptyIcon.create(projectIconSize())
     }
-    return IconDeferrer.getInstance().defer(EmptyIcon.ICON_16, Pair(path, isDark)) {
-      val calculateIcon = calculateIcon(it.first, it.second)
+    return IconDeferrer.getInstance().deferAutoUpdatable(EmptyIcon.create(projectIconSize()), Pair(path, isDark)) {
+      val calculateIcon = calculateIcon(path = it.first, isDark = it.second)
       if (calculateIcon == null && generateFromName) {
-        val name = RecentProjectsManagerBase.instanceEx.getProjectName(path)
-        AvatarUtils.createRoundRectIcon(AvatarUtils.generateColoredAvatar(name, name), 20)
+        val projectManager = RecentProjectsManagerBase.instanceEx
+        val name = projectManager.getDisplayName(path) ?: projectManager.getProjectName(path)
+        AvatarUtils.createRoundRectIcon(AvatarUtils.generateColoredAvatar(name, name, ProjectIconPalette), projectIconSize())
       }
       else calculateIcon
     }
@@ -64,17 +99,18 @@ internal class RecentProjectIconHelper {
   }
 
   private fun calculateIcon(path: @SystemIndependent String, isDark: Boolean): Icon? {
-    var file = Paths.get(path, ".idea", if (isDark) "icon_dark.png" else "icon.png")
-    var recolor = false
-    if (isDark && !file.exists()) {
-      file = Paths.get(path, ".idea", "icon.png")
-      recolor = true
-    }
+    val lookup = if (isDark) listOf("icon_dark.svg", "icon.svg", "icon_dark.png", "icon.png")
+                 else listOf("icon.svg", "icon.png")
+    val iconName = lookup.firstOrNull { Paths.get(path, ".idea", it).exists() }
+
+    if (iconName == null) return null
+    val file = Paths.get(path, ".idea", iconName)
 
     val fileInfo = file.basicAttributesIfExists() ?: return null
     val timestamp = fileInfo.lastModifiedTime().toMillis()
 
-    var iconWrapper = projectIcons.get(path)
+    val recolor = isDark && !file.nameWithoutExtension.endsWith("_dark")
+    var iconWrapper = projectIcons[path]
     if (iconWrapper != null && iconWrapper.timestamp == timestamp) {
       return iconWrapper.icon
     }
@@ -87,7 +123,7 @@ internal class RecentProjectIconHelper {
 
       iconWrapper = MyIcon(icon, timestamp)
 
-      projectIcons.put(path, iconWrapper)
+      projectIcons[path] = iconWrapper
       return iconWrapper.icon
     }
     catch (e: Exception) {
@@ -124,4 +160,20 @@ private fun toRetinaAwareIcon(image: BufferedImage): Icon {
       return if (UIUtil.isJreHiDPI()) (image.height / JBUIScale.sysScale()).toInt() else image.height
     }
   }
+}
+
+object ProjectIconPalette : ColorPalette() {
+
+  override val gradients: Array<kotlin.Pair<Color, Color>>
+    get() = arrayOf(
+      JBColor(0xDB3D3C, 0xCE443C) to JBColor(0xFF8E42, 0xE77E41),
+      JBColor(0xF57236, 0xE27237) to JBColor(0xFCBA3F, 0xE8A83E),
+      JBColor(0x2BC8BB, 0x2DBCAD) to JBColor(0x36EBAE, 0x35D6A4),
+      JBColor(0x359AF2, 0x3895E1) to JBColor(0x57DBFF, 0x51C5EA),
+      JBColor(0x8379FB, 0x7B75E8) to JBColor(0x85A8FF, 0x7D99EB),
+      JBColor(0x7E54B5, 0x7854AD) to JBColor(0x9486FF, 0x897AE6),
+      JBColor(0xD63CC8, 0x8F4593) to JBColor(0xF582B9, 0xB572E3),
+      JBColor(0x954294, 0xC840B9) to JBColor(0xC87DFF, 0xE074AE),
+      JBColor(0xE75371, 0xD75370) to JBColor(0xFF78B5, 0xE96FA3)
+    )
 }

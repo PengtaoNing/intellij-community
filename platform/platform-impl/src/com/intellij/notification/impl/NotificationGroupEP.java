@@ -75,7 +75,7 @@ public final class NotificationGroupEP implements PluginAware {
   /**
    * Semicolon-separated list of notificationIds which should be recorded in feature usage statistics.
    *
-   * @see Notification#displayId
+   * @see Notification#getDisplayId
    */
   @Attribute(value = "notificationIds", converter = IdParser.class)
   public @Nullable List<String> notificationIds;
@@ -91,7 +91,7 @@ public final class NotificationGroupEP implements PluginAware {
       List<String> result = new ArrayList<>(values.length);
       for (String item : values) {
         if (!item.isEmpty()) {
-          result.add(value.trim());
+          result.add(item.trim());
         }
       }
       return result;

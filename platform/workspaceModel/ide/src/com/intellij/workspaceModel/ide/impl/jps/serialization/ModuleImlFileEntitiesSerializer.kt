@@ -14,11 +14,9 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.util.io.exists
 import com.intellij.util.isEmpty
 import com.intellij.workspaceModel.ide.*
+import com.intellij.workspaceModel.ide.impl.legacyBridge.library.LibraryNameGenerator
 import com.intellij.workspaceModel.ide.impl.virtualFile
-import com.intellij.workspaceModel.storage.EntitySource
-import com.intellij.workspaceModel.storage.WorkspaceEntity
-import com.intellij.workspaceModel.storage.WorkspaceEntityStorage
-import com.intellij.workspaceModel.storage.WorkspaceEntityStorageBuilder
+import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.*
 import com.intellij.workspaceModel.storage.impl.url.toVirtualFileUrl
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl
@@ -36,10 +34,15 @@ import java.io.StringReader
 import java.nio.file.Paths
 import java.util.*
 
+internal const val DEPRECATED_MODULE_MANAGER_COMPONENT_NAME = "DeprecatedModuleOptionManager"
 private const val MODULE_ROOT_MANAGER_COMPONENT_NAME = "NewModuleRootManager"
 private const val URL_ATTRIBUTE = "url"
 private val STANDARD_MODULE_OPTIONS = setOf(
   "type", "external.system.id", "external.system.module.version", "external.linked.project.path", "external.linked.project.id",
+  "external.root.project.path", "external.system.module.group", "external.system.module.type"
+)
+private val MODULE_OPTIONS_TO_CHECK = setOf(
+  "external.system.module.version", "external.linked.project.path", "external.linked.project.id",
   "external.root.project.path", "external.system.module.group", "external.system.module.type"
 )
 
@@ -47,8 +50,8 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
                                                     override val fileUrl: VirtualFileUrl,
                                                     override val internalEntitySource: JpsFileEntitySource,
                                                     private val virtualFileManager: VirtualFileUrlManager,
-                                                    private val internalModuleListSerializer: JpsModuleListSerializer? = null,
-                                                    private val externalModuleListSerializer: JpsModuleListSerializer? = null,
+                                                    internal val internalModuleListSerializer: JpsModuleListSerializer? = null,
+                                                    internal val externalModuleListSerializer: JpsModuleListSerializer? = null,
                                                     private val externalStorageConfigurationManager: ExternalStorageConfigurationManager? = null)
   : JpsFileEntitiesSerializer<ModuleEntity> {
   override val mainEntityClass: Class<ModuleEntity>
@@ -98,7 +101,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
     val customDir: String?
     val externalSystemOptions: Map<String?, String?>
     val externalSystemId: String?
-    val entitySource = try {
+    val entitySourceForModuleAndOtherEntities = try {
       moduleOptions = readModuleOptions(reader)
       val pair = readExternalSystemOptions(reader, moduleOptions)
       externalSystemOptions = pair.first
@@ -113,15 +116,23 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       }
 
       customDir = moduleOptions[JpsProjectLoader.CLASSPATH_DIR_ATTRIBUTE]
-      customRootsSerializer?.createEntitySource(fileUrl, internalEntitySource, customDir, virtualFileManager)
-                         ?: createEntitySource(externalSystemId)
+      val externalSystemEntitySource = createEntitySource(externalSystemId)
+      val moduleEntitySource = customRootsSerializer?.createEntitySource(fileUrl, internalEntitySource, customDir, virtualFileManager)
+                                ?: externalSystemEntitySource
+      if (moduleEntitySource is DummyParentEntitySource)
+        Pair(moduleEntitySource, externalSystemEntitySource)
+      else
+        Pair(moduleEntitySource, moduleEntitySource)
     }
     catch (e: JDOMException) {
       builder.addModuleEntity(modulePath.moduleName, listOf(ModuleDependencyItem.ModuleSourceDependency), internalEntitySource)
       throw e
     }
 
-    val moduleEntity = builder.addModuleEntity(modulePath.moduleName, listOf(ModuleDependencyItem.ModuleSourceDependency), entitySource)
+    val moduleEntity = builder.addModuleEntity(modulePath.moduleName, listOf(ModuleDependencyItem.ModuleSourceDependency),
+                                               entitySourceForModuleAndOtherEntities.first)
+
+    val entitySource = entitySourceForModuleAndOtherEntities.second
     val moduleGroup = modulePath.group
     if (moduleGroup != null) {
       builder.addModuleGroupPathEntity(moduleGroup.split('/'), moduleEntity, entitySource)
@@ -143,12 +154,12 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
     CUSTOM_MODULE_COMPONENT_SERIALIZER_EP.extensions().forEach {
       it.loadComponent(builder, moduleEntity, reader, fileUrl, errorReporter, virtualFileManager)
     }
+    // Don't forget to load external system options even if custom root serializer exist
+    loadExternalSystemOptions(builder, moduleEntity, reader, externalSystemOptions, externalSystemId, entitySource)
     if (customRootsSerializer != null) {
       customRootsSerializer.loadRoots(builder, moduleEntity, reader, customDir, fileUrl, internalModuleListSerializer, errorReporter, virtualFileManager)
     }
     else {
-      loadExternalSystemOptions(builder, moduleEntity, reader, externalSystemOptions, externalSystemId, entitySource)
-
       val rootManagerElement = reader.loadComponent(fileUrl.url, MODULE_ROOT_MANAGER_COMPONENT_NAME, getBaseDirPath())?.clone()
       if (rootManagerElement != null) {
         loadRootManager(rootManagerElement, moduleEntity, builder, virtualFileManager)
@@ -169,7 +180,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
   }
 
   private fun readModuleOptions(reader: JpsFileContentReader): Map<String?, String?> {
-    val component = reader.loadComponent(fileUrl.url, "DeprecatedModuleOptionManager", getBaseDirPath()) ?: return emptyMap()
+    val component = reader.loadComponent(fileUrl.url, DEPRECATED_MODULE_MANAGER_COMPONENT_NAME, getBaseDirPath()) ?: return emptyMap()
     return component.getChildren("option").associateBy({ it.getAttributeValue("key") },
                                                        { it.getAttributeValue("value") })
   }
@@ -180,7 +191,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
                                                externalSystemOptions: Map<String?, String?>,
                                                externalSystemId: String?,
                                                entitySource: EntitySource) {
-
+    if (!shouldCreateExternalSystemModuleOptions(externalSystemId, externalSystemOptions, MODULE_OPTIONS_TO_CHECK)) return
     val optionsEntity = builder.getOrCreateExternalSystemModuleOptions(module, entitySource)
     builder.modifyEntity(ModifiableExternalSystemModuleOptionsEntity::class.java, optionsEntity) {
       externalSystem = externalSystemId
@@ -191,6 +202,13 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       externalSystemModuleGroup = externalSystemOptions["external.system.module.group"]
       externalSystemModuleType = externalSystemOptions["external.system.module.type"]
     }
+  }
+
+  internal fun shouldCreateExternalSystemModuleOptions(externalSystemId: String?,
+                                                      externalSystemOptions: Map<String?, String?>,
+                                                      moduleOptionsToCheck: Set<String>): Boolean {
+    if (externalSystemId != null) return true
+    return externalSystemOptions.any { (key, value) -> value != null && key in moduleOptionsToCheck }
   }
 
   private fun loadRootManager(rootManagerElement: Element,
@@ -257,7 +275,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
         INHERITED_JDK_TYPE -> ModuleDependencyItem.InheritedSdkDependency
         LIBRARY_TYPE -> {
           val level = dependencyElement.getAttributeValueStrict(LEVEL_ATTRIBUTE)
-          val parentId = levelToLibraryTableId(level)
+          val parentId = LibraryNameGenerator.getLibraryTableId(level)
           val libraryId = LibraryId(dependencyElement.getAttributeValueStrict(NAME_ATTRIBUTE), parentId)
           ModuleDependencyItem.Exportable.LibraryDependency(libraryId, dependencyElement.isExported(), dependencyElement.readScope())
         }
@@ -265,11 +283,11 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
           val libraryElement = dependencyElement.getChild(LIBRARY_TAG)!!
           // TODO. Probably we want a fixed name based on hashed library roots
           val nameAttributeValue = libraryElement.getAttributeValue(NAME_ATTRIBUTE)
-          val originalName = nameAttributeValue ?: "$UNNAMED_LIBRARY_NAME_PREFIX${nextUnnamedLibraryIndex++}"
-          val name = generateUniqueLibraryName(originalName) { it in moduleLibraryNames }
+          val originalName = nameAttributeValue ?: "${LibraryNameGenerator.UNNAMED_LIBRARY_NAME_PREFIX}${nextUnnamedLibraryIndex++}"
+          val name = LibraryNameGenerator.generateUniqueLibraryName(originalName) { it in moduleLibraryNames }
           moduleLibraryNames.add(name)
           val tableId = LibraryTableId.ModuleLibraryTableId(moduleEntity.persistentId())
-          loadLibrary(name, libraryElement, tableId, builder, entitySource, virtualFileManager)
+          loadLibrary(name, libraryElement, tableId, builder, entitySource, virtualFileManager, false)
           val libraryId = LibraryId(name, tableId)
           ModuleDependencyItem.Exportable.LibraryDependency(libraryId, dependencyElement.isExported(), dependencyElement.readScope())
         }
@@ -351,7 +369,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
   }
 
   protected open fun createFacetSerializer(): FacetEntitiesSerializer {
-    return FacetEntitiesSerializer(fileUrl, internalEntitySource, JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME, false)
+    return FacetEntitiesSerializer(fileUrl, internalEntitySource, JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME, null, false)
   }
 
   protected open fun acceptsSource(entitySource: EntitySource): Boolean {
@@ -488,7 +506,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       if (library.tableId is LibraryTableId.ModuleLibraryTableId) {
         createOrderEntryTag(MODULE_LIBRARY_TYPE).apply {
           setExportedAndScopeAttributes(dependencyItem)
-          addContent(saveLibrary(moduleLibraries.getValue(library.name), null))
+          addContent(saveLibrary(moduleLibraries.getValue(library.name), null, false))
         }
       } else {
         createOrderEntryTag(LIBRARY_TYPE).apply {
@@ -530,14 +548,14 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
     if (customImlData != null) {
       optionsMap.putAll(customImlData.customModuleOptions)
     }
-    val componentTag = JDomSerializationUtil.createComponentElement("DeprecatedModuleOptionManager")
+    val componentTag = JDomSerializationUtil.createComponentElement(DEPRECATED_MODULE_MANAGER_COMPONENT_NAME)
     for ((name, value) in optionsMap) {
       if (value != null) {
         componentTag.addContent(Element("option").setAttribute("key", name).setAttribute("value", value))
       }
     }
     if (componentTag.children.isNotEmpty()) {
-      writer.saveComponent(fileUrl.url, "DeprecatedModuleOptionManager", componentTag)
+      writer.saveComponent(fileUrl.url, DEPRECATED_MODULE_MANAGER_COMPONENT_NAME, componentTag)
     }
   }
 
@@ -702,6 +720,7 @@ internal open class ModuleListSerializerImpl(override val fileUrl: String,
   override fun deleteObsoleteFile(fileUrl: String, writer: JpsFileContentWriter) {
     writer.saveComponent(fileUrl, JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME, null)
     writer.saveComponent(fileUrl, MODULE_ROOT_MANAGER_COMPONENT_NAME, null)
+    writer.saveComponent(fileUrl, DEPRECATED_MODULE_MANAGER_COMPONENT_NAME, null)
   }
 
   private fun getModuleFileUrl(source: JpsFileEntitySource.FileInDirectory,

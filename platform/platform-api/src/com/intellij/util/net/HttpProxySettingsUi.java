@@ -1,10 +1,13 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.net;
 
 import com.google.common.net.HostAndPort;
 import com.google.common.net.InetAddresses;
 import com.google.common.net.InternetDomainName;
 import com.intellij.ide.IdeBundle;
+import com.intellij.notification.NotificationAction;
+import com.intellij.notification.NotificationType;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ConfigurableUi;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.progress.ProgressManager;
@@ -16,6 +19,7 @@ import com.intellij.ui.PortField;
 import com.intellij.ui.RawCommandLineEditor;
 import com.intellij.ui.RelativeFont;
 import com.intellij.ui.components.JBRadioButton;
+import com.intellij.ui.jcef.JBCefApp;
 import com.intellij.util.io.HttpRequests;
 import com.intellij.util.proxy.CommonProxy;
 import com.intellij.util.proxy.JavaProxyProperty;
@@ -268,7 +272,8 @@ class HttpProxySettingsUi implements ConfigurableUi<HttpConfigurable> {
       throw new ConfigurationException(error);
     }
 
-    if (isModified(settings)) {
+    boolean modified = isModified(settings);
+    if (modified) {
       settings.AUTHENTICATION_CANCELLED = false;
     }
 
@@ -286,6 +291,13 @@ class HttpProxySettingsUi implements ConfigurableUi<HttpConfigurable> {
 
     settings.PROXY_PORT = myProxyPortTextField.getNumber();
     settings.PROXY_HOST = getText(myProxyHostTextField);
+
+    if (modified && JBCefApp.isStarted()) {
+      JBCefApp.NOTIFICATION_GROUP.getValue()
+        .createNotification(IdeBundle.message("notification.title.jcef.proxyChanged"), IdeBundle.message("notification.content.jcef.applySettings"), NotificationType.WARNING)
+        .addAction(NotificationAction.createSimple(IdeBundle.message("action.jcef.restart"), () -> ApplicationManager.getApplication().restart()))
+        .notify(null);
+    }
   }
 
   @Nullable

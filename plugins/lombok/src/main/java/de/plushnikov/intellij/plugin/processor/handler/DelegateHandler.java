@@ -12,7 +12,6 @@ import de.plushnikov.intellij.plugin.psi.LombokLightMethodBuilder;
 import de.plushnikov.intellij.plugin.util.PsiAnnotationSearchUtil;
 import de.plushnikov.intellij.plugin.util.PsiAnnotationUtil;
 import de.plushnikov.intellij.plugin.util.PsiElementUtil;
-import de.plushnikov.intellij.plugin.util.PsiMethodUtil;
 import org.apache.commons.lang.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -22,10 +21,6 @@ import java.util.*;
  * Handler for Delegate annotation processing, for fields and for methods
  */
 public class DelegateHandler {
-
-  public DelegateHandler() {
-    // default constructor
-  }
 
   public boolean validate(@NotNull PsiModifierListOwner psiModifierListOwner, @NotNull PsiType psiType, @NotNull PsiAnnotation psiAnnotation, @NotNull ProblemBuilder builder) {
     boolean result = true;
@@ -210,7 +205,7 @@ public class DelegateHandler {
     }
 
     final String codeBlockText = createCodeBlockText(psiElement, psiMethod, returnType, psiParameters);
-    methodBuilder.withBody(PsiMethodUtil.createCodeBlockFromText(codeBlockText, methodBuilder));
+    methodBuilder.withBodyText(codeBlockText);
 
     return methodBuilder;
   }
@@ -236,7 +231,7 @@ public class DelegateHandler {
       psiElement.getName(),
       isMethodCall ? "()" : "",
       psiMethod.getName(),
-      paramString.toString());
+      paramString);
     return blockText;
   }
 

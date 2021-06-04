@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.welcomeScreen;
 
 import com.intellij.icons.AllIcons;
@@ -15,11 +15,15 @@ import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.ui.LafManagerListener;
 import com.intellij.idea.SplashManager;
 import com.intellij.jdkEx.JdkEx;
+import com.intellij.notification.NotificationsManager;
+import com.intellij.notification.impl.NotificationsManagerImpl;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.MnemonicHelper;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.JBProtocolCommand;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectManagerListener;
@@ -105,7 +109,8 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     // so we need resize window when it is shown
     UiNotifyConnector.doWhenFirstShown(this, this::pack);
 
-    MessageBusConnection connection = ApplicationManager.getApplication().getMessageBus().connect(this);
+    Application app = ApplicationManager.getApplication();
+    MessageBusConnection connection = app.getMessageBus().connect(this);
     connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectOpened(@NotNull Project project) {
@@ -124,8 +129,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
         saveSizeAndLocation(getBounds());
       }
     });
-    connection.subscribe(LafManagerListener.TOPIC, new LafManagerListener(){
-
+    connection.subscribe(LafManagerListener.TOPIC, new LafManagerListener() {
       @Override
       public void lookAndFeelChanged(@NotNull LafManager source) {
         if (myScreen != null) {
@@ -135,11 +139,12 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
           Disposer.dispose(myBalloonLayout);
         }
         myBalloonLayout = new WelcomeBalloonLayoutImpl(rootPane, JBUI.insets(8));
-        if(USE_TABBED_WELCOME_SCREEN){
-          var selectedIndex = ((TabbedWelcomeScreen)myScreen).getSelectedIndex();
+        if (USE_TABBED_WELCOME_SCREEN) {
+          int selectedIndex = ((TabbedWelcomeScreen)myScreen).getSelectedIndex();
           myScreen = new TabbedWelcomeScreen();
           ((TabbedWelcomeScreen)myScreen).setSelectedIndex(selectedIndex);
-        } else{
+        }
+        else {
           myScreen = new FlatWelcomeScreen();
         }
         updateComponentsAndResize();
@@ -158,10 +163,14 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
 
     WelcomeFrame.setupCloseAction(this);
     MnemonicHelper.init(this);
-    Disposer.register(ApplicationManager.getApplication(), this);
+    Disposer.register(app, this);
 
     UIUtil.decorateWindowHeader(getRootPane());
     UIUtil.setCustomTitleBar(this, getRootPane(), runnable -> Disposer.register(this, () -> runnable.run()));
+
+    app.invokeLater(
+      () -> ((NotificationsManagerImpl)NotificationsManager.getNotificationsManager()).dispatchEarlyNotifications(),
+      ModalityState.NON_MODAL);
   }
 
   private void updateComponentsAndResize() {
@@ -184,11 +193,11 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     }
     if (USE_TABBED_WELCOME_SCREEN) {
       JBDimension defaultSize = JBUI.size(MAX_DEFAULT_WIDTH, defaultHeight);
-      getRootPane().setPreferredSize(chooseNotNull(WindowStateService.getInstance().getSize(WelcomeFrame.DIMENSION_KEY), defaultSize));
+      setPreferredSize(chooseNotNull(WindowStateService.getInstance().getSize(WelcomeFrame.DIMENSION_KEY), defaultSize));
     }
     else {
       int width = RecentProjectListActionProvider.getInstance().getActions(false).size() == 0 ? 666 : MAX_DEFAULT_WIDTH;
-      getRootPane().setPreferredSize(JBUI.size(width, defaultHeight));
+      setPreferredSize(JBUI.size(width, defaultHeight));
     }
     setResizable(USE_TABBED_WELCOME_SCREEN);
 
@@ -237,9 +246,8 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     WindowStateService.getInstance().putSize(WelcomeFrame.DIMENSION_KEY, location.getSize());
   }
 
-  @Nullable
   @Override
-  public StatusBar getStatusBar() {
+  public @Nullable StatusBar getStatusBar() {
     return null;
   }
 
@@ -252,8 +260,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     return WelcomeScreenComponentFactory.getApplicationTitle();
   }
 
-  @NotNull
-  public static JComponent getPreferredFocusedComponent(@NotNull Pair<JPanel, JBList<AnAction>> pair) {
+  public static @NotNull JComponent getPreferredFocusedComponent(@NotNull Pair<JPanel, JBList<AnAction>> pair) {
     if (pair.second.getModel().getSize() == 1) {
       JBTextField textField = UIUtil.uiTraverser(pair.first).filter(JBTextField.class).first();
       if (textField != null) {
@@ -374,8 +381,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
       }
     }
 
-    @NotNull
-    private JComponent createBody() {
+    private @NotNull JComponent createBody() {
       NonOpaquePanel panel = new NonOpaquePanel(new BorderLayout());
       panel.add(WelcomeScreenComponentFactory.createLogo(), BorderLayout.NORTH);
       myTouchbarActions.removeAll();
@@ -410,13 +416,12 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
       return WelcomeScreenComponentFactory.createEventLink(IdeBundle.message("action.Events"), FlatWelcomeFrame.this);
     }
 
-    @NotNull
-    private ActionPanel createQuickStartActionPanel() {
+    private @NotNull ActionPanel createQuickStartActionPanel() {
       DefaultActionGroup group = new DefaultActionGroup();
       ActionGroup quickStart = (ActionGroup)ActionManager.getInstance().getAction(IdeActions.GROUP_WELCOME_SCREEN_QUICKSTART);
       WelcomeScreenActionsUtil.collectAllActions(group, quickStart);
 
-      ActionPanel mainPanel =
+      @SuppressWarnings("SpellCheckingInspection") ActionPanel mainPanel =
         new ActionPanel(new MigLayout("ins 0, novisualpadding, gap " + JBUI.scale(5) + ", flowy", "push[pref!, center]push"));
       mainPanel.setOpaque(false);
 
@@ -435,7 +440,6 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
         @Override
         public void addNotify() {
           super.addNotify();
-
           if (firstAction != null) {
             onFirstActionShown(firstAction);
           }
@@ -452,7 +456,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
         action.update(e);
         Presentation presentation = e.getPresentation();
         if (presentation.isVisible()) {
-          String text = presentation.getText();
+          @SuppressWarnings("DialogTitleCapitalization") String text = presentation.getText();
           if (text != null && text.endsWith("...")) {
             text = text.substring(0, text.length() - 3);
           }
@@ -462,9 +466,8 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
             icon = IconUtil.colorize(icon, new JBColor(0x6e6e6e, 0xafb1b3));
           }
           action = ActionGroupPanelWrapper.wrapGroups(action, this);
-          ActionLink link = new ActionLink(text, icon, action, null, ActionPlaces.WELCOME_SCREEN);
-          // Don't allow focus, as the containing panel is going to focusable.
-          link.setFocusable(false);
+          @SuppressWarnings("deprecation") ActionLink link = new ActionLink(text, icon, action, null, ActionPlaces.WELCOME_SCREEN);
+          link.setFocusable(false);  // Don't allow focus, as the containing panel is going to focusable.
           link.setPaintUnderline(false);
           link.setNormalColor(WelcomeScreenUIManager.getLinkNormalColor());
           WelcomeScreenComponentFactory.JActionLinkPanel button = new WelcomeScreenComponentFactory.JActionLinkPanel(link);
@@ -487,38 +490,29 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
 
     @Override
     public @Nullable Object getData(@NotNull String dataId) {
-      if (TouchbarDataKeys.ACTIONS_KEY.is(dataId)) {
-        return myTouchbarActions;
-      }
-      return null;
+      return TouchbarDataKeys.ACTIONS_KEY.is(dataId) ? myTouchbarActions : null;
     }
   }
 
-  protected void extendActionsGroup(JPanel panel) {
-  }
+  @SuppressWarnings("unused")
+  protected void extendActionsGroup(JPanel panel) { }
 
-  protected void onFirstActionShown(@NotNull Component action) {
-  }
+  @SuppressWarnings("unused")
+  protected void onFirstActionShown(@NotNull Component action) { }
 
-  @Nullable
   @Override
-  public BalloonLayout getBalloonLayout() {
+  public @Nullable BalloonLayout getBalloonLayout() {
     return myBalloonLayout;
   }
 
-  @NotNull
   @Override
-  public Rectangle suggestChildFrameBounds() {
+  public @NotNull Rectangle suggestChildFrameBounds() {
     return getBounds();
   }
 
-  @Nullable
   @Override
-  public Project getProject() {
-    if (ApplicationManager.getApplication().isDisposed()) {
-      return null;
-    }
-    return ProjectManager.getInstance().getDefaultProject();
+  public @Nullable Project getProject() {
+    return ApplicationManager.getApplication().isDisposed() ? null : ProjectManager.getInstance().getDefaultProject();
   }
 
   @Override
@@ -532,12 +526,10 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
   }
 
   private static class WelcomeFrameMenuBar extends IdeMenuBar {
-
     @Override
     public @NotNull ActionGroup getMainMenuActionGroup() {
-      return new DefaultActionGroup(ActionManager.getInstance().getAction(IdeActions.GROUP_FILE),
-                                    ActionManager.getInstance().getAction(IdeActions.GROUP_HELP_MENU));
+      ActionManager manager = ActionManager.getInstance();
+      return new DefaultActionGroup(manager.getAction(IdeActions.GROUP_FILE), manager.getAction(IdeActions.GROUP_HELP_MENU));
     }
   }
-
 }

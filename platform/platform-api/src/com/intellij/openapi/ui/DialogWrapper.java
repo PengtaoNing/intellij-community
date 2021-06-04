@@ -29,6 +29,7 @@ import com.intellij.openapi.wm.IdeGlassPaneUtil;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.ui.ColorUtil;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.UIBundle;
 import com.intellij.ui.border.CustomLineBorder;
 import com.intellij.ui.components.JBOptionButton;
@@ -74,6 +75,7 @@ import static javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW;
  */
 public abstract class DialogWrapper {
   private static final Logger LOG = Logger.getInstance(DialogWrapper.class);
+  private final JPanel myRoot = new JPanel();
 
   public enum IdeModalityType {
     IDE,
@@ -161,7 +163,7 @@ public abstract class DialogWrapper {
   private final List<JBOptionButton> myOptionsButtons = new ArrayList<>();
   private final List<Function0<ValidationInfo>> myValidateCallbacks = new ArrayList<>();
   private final Alarm myValidationAlarm = new Alarm(getValidationThreadToUse(), myDisposable);
-  private final Alarm myErrorTextAlarm = new Alarm();
+  private final Alarm myErrorTextAlarm = new Alarm(myRoot, myDisposable);
 
   private boolean myClosed;
   private boolean myDisposed;
@@ -417,7 +419,7 @@ public abstract class DialogWrapper {
   protected void createDefaultActions() {
     myOKAction = new OkAction();
     myCancelAction = new CancelAction();
-    myHelpAction = new HelpAction();
+    myHelpAction = new HelpAction(this::doHelpAction);
   }
 
   public void setUndecorated(boolean undecorated) {
@@ -561,11 +563,16 @@ public abstract class DialogWrapper {
 
   @NotNull
   protected JButton createHelpButton(@NotNull Insets insets) {
-    JButton helpButton = new JButton(getHelpAction());
+    JButton helpButton = createHelpButton(getHelpAction());
+    setHelpTooltip(helpButton);
+    helpButton.setMargin(insets);
+    return helpButton;
+  }
+
+  public static @NotNull JButton createHelpButton(@NotNull Action action) {
+    JButton helpButton = new JButton(action);
     helpButton.putClientProperty("JButton.buttonType", "help");
     helpButton.setText("");
-    helpButton.setMargin(insets);
-    setHelpTooltip(helpButton);
     helpButton.addPropertyChangeListener("ancestor", evt -> {
       if (evt.getNewValue() == null) {
         HelpTooltip.dispose((JComponent)evt.getSource());
@@ -819,7 +826,6 @@ public abstract class DialogWrapper {
   private static JButton createJOptionsButton(@NotNull OptionAction action) {
     JBOptionButton optionButton = new JBOptionButton(action, action.getOptions());
     optionButton.setOptionTooltipText(getDefaultTooltip());
-    optionButton.setOkToProcessDefaultMnemonics(false);
     return optionButton;
   }
 
@@ -1188,6 +1194,11 @@ public abstract class DialogWrapper {
     return getDimensionServiceKey();
   }
 
+  /**
+   * @see #OK_EXIT_CODE
+   * @see #CANCEL_EXIT_CODE
+   * @see #CLOSE_EXIT_CODE
+   */
   public int getExitCode() {
     return myExitCode;
   }
@@ -1299,7 +1310,7 @@ public abstract class DialogWrapper {
     myErrorText.myLabel.addComponentListener(resizeListener);
     Disposer.register(myDisposable, () -> myErrorText.myLabel.removeComponentListener(resizeListener));
 
-    final JPanel root = new JPanel(createRootLayout());
+    myRoot.setLayout(createRootLayout());
     //{
     //  @Override
     //  public void paint(Graphics g) {
@@ -1309,21 +1320,21 @@ public abstract class DialogWrapper {
     //    super.paint(g);
     //  }
     //};
-    myPeer.setContentPane(root);
+    myPeer.setContentPane(myRoot);
 
     AnAction toggleShowOptions = DumbAwareAction.create(e -> expandNextOptionButton());
-    toggleShowOptions.registerCustomShortcutSet(getDefaultShowPopupShortcut(), root, myDisposable);
+    toggleShowOptions.registerCustomShortcutSet(getDefaultShowPopupShortcut(), myRoot, myDisposable);
 
     JComponent titlePane = createTitlePane();
     if (titlePane != null) {
       JPanel northSection = new JPanel(new BorderLayout());
-      root.add(northSection, BorderLayout.NORTH);
+      myRoot.add(northSection, BorderLayout.NORTH);
 
       northSection.add(titlePane, BorderLayout.CENTER);
     }
 
     JComponent centerSection = new JPanel(new BorderLayout());
-    root.add(centerSection, BorderLayout.CENTER);
+    myRoot.add(centerSection, BorderLayout.CENTER);
 
     final JComponent n = createNorthPanel();
     if (n != null) {
@@ -1350,7 +1361,7 @@ public abstract class DialogWrapper {
       centerPanel == null || centerPanel.getClientProperty(IS_VISUAL_PADDING_COMPENSATED_ON_COMPONENT_LEVEL_KEY) == null;
     if (isVisualPaddingCompensatedOnComponentLevel) {
       // see comment about visual paddings in the MigLayoutBuilder.build
-      root.setBorder(createContentPaneBorder());
+      myRoot.setBorder(createContentPaneBorder());
     }
 
     if (myCreateSouthSection) {
@@ -1358,7 +1369,7 @@ public abstract class DialogWrapper {
       if (!isVisualPaddingCompensatedOnComponentLevel) {
         southSection.setBorder(JBUI.Borders.empty(0, 12, 8, 12));
       }
-      root.add(southSection, BorderLayout.SOUTH);
+      myRoot.add(southSection, BorderLayout.SOUTH);
 
       southSection.add(myErrorText, BorderLayout.CENTER);
       final JComponent south = createSouthPanel();
@@ -1367,14 +1378,13 @@ public abstract class DialogWrapper {
       }
     }
 
-    MnemonicHelper.init(root);
+    MnemonicHelper.init(myRoot);
     if (!postponeValidation()) {
       startTrackingValidation();
     }
     if (SystemInfoRt.isWindows || (SystemInfoRt.isLinux && Registry.is("ide.linux.enter.on.dialog.triggers.focused.button", true))) {
-      installEnterHook(root, myDisposable);
+      installEnterHook(myRoot, myDisposable);
     }
-    myErrorTextAlarm.setActivationComponent(root);
   }
 
   protected int getErrorTextAlignment() {
@@ -1603,8 +1613,8 @@ protected final void setButtonsAlignment(@MagicConstant(intValues = {SwingConsta
   /**
    * @see JDialog#isResizable
    */
-  public void isResizable() {
-    myPeer.isResizable();
+  public boolean isResizable() {
+    return myPeer.isResizable();
   }
 
   /**
@@ -1643,6 +1653,15 @@ protected final void setButtonsAlignment(@MagicConstant(intValues = {SwingConsta
     myUserBounds.setLocation(x, y);
     myUserLocationSet = true;
     myPeer.setLocation(x, y);
+  }
+
+  /**
+   * Called to fit window bounds of dialog to a screen
+   * @param rect the suggested window bounds. This rect should be modified to change resulting bounds.
+   */
+  @ApiStatus.Internal
+  public void fitToScreen(Rectangle rect) {
+    ScreenUtil.fitToScreen(rect);
   }
 
   @SuppressWarnings("unused")
@@ -1935,14 +1954,17 @@ protected final void setButtonsAlignment(@MagicConstant(intValues = {SwingConsta
     }
   }
 
-  private final class HelpAction extends AbstractAction {
-    private HelpAction() {
+  public static final class HelpAction extends AbstractAction {
+    private final @NotNull Runnable myHelpActionPerformed;
+
+    public HelpAction(@NotNull Runnable helpActionPerformed) {
       super(CommonBundle.getHelpButtonText());
+      myHelpActionPerformed = helpActionPerformed;
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
-      doHelpAction();
+      myHelpActionPerformed.run();
     }
   }
 

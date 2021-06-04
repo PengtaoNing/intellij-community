@@ -16,6 +16,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.ShutDownTracker
 import com.intellij.serviceContainer.NonInjectable
@@ -153,12 +154,8 @@ class PasswordSafeImpl : BasePasswordSafe(), SettingsSavingComponent {
   // SecureRandom (used to generate master password on first save) can be blocking on Linux
   private val saveAlarm = pooledThreadSingleAlarm(delay = 0) {
     val currentThread = Thread.currentThread()
-    ShutDownTracker.getInstance().registerStopperThread(currentThread)
-    try {
+    ShutDownTracker.getInstance().executeWithStopperThread(currentThread) {
       (currentProviderIfComputed as? KeePassCredentialStore)?.save(createMasterKeyEncryptionSpec())
-    }
-    finally {
-      ShutDownTracker.getInstance().unregisterStopperThread(currentThread)
     }
   }
 
@@ -193,7 +190,7 @@ private fun computeProvider(settings: PasswordSafeSettings): CredentialStore {
                                   override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                                     // to hide before Settings open, otherwise dialog and notification are shown at the same time
                                     notification.expire()
-                                    ShowSettingsUtil.getInstance().showSettingsDialog(e.project, PasswordSafeConfigurable::class.java)
+                                    openSettings(e.project)
                                   }
                                 })
   }
@@ -258,3 +255,7 @@ fun createKeePassStore(dbFile: Path, masterPasswordFile: Path): PasswordSafe {
 }
 
 private fun CredentialAttributes.toPasswordStoreable() = if (isPasswordMemoryOnly) CredentialAttributes(serviceName, userName, requestor) else this
+
+fun openSettings(project: Project?) {
+  ShowSettingsUtil.getInstance().showSettingsDialog(project, PasswordSafeConfigurable::class.java)
+}

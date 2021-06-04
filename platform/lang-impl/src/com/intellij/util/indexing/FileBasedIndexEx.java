@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.indexing;
 
 import com.intellij.ide.lightEdit.LightEdit;
@@ -274,7 +274,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
     return processValueIterator(indexId, dataKey, restrictToFile, scope, valueIt -> {
       while (valueIt.hasNext()) {
         V value = valueIt.next();
-        if (valueIt.getValueAssociationPredicate().contains(restrictedFileId) && !processor.process(restrictToFile, value)) {
+        if (valueIt.getValueAssociationPredicate().test(restrictedFileId) && !processor.process(restrictToFile, value)) {
           return false;
         }
         ProgressManager.checkCanceled();
@@ -428,30 +428,12 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
   public void iterateIndexableFiles(@NotNull ContentIterator processor, @NotNull Project project, @Nullable ProgressIndicator indicator) {
     List<IndexableFilesIterator> providers = getOrderedIndexableFilesProviders(project);
     IndexableFilesDeduplicateFilter indexableFilesDeduplicateFilter = IndexableFilesDeduplicateFilter.create();
-    boolean wasIndeterminate = false;
-    if (indicator != null) {
-      wasIndeterminate = indicator.isIndeterminate();
-      indicator.setIndeterminate(false);
-      indicator.setFraction(0);
-      indicator.pushState();
-    }
-    try {
-      for (int i = 0; i < providers.size(); i++) {
-        if (indicator != null) {
-          indicator.checkCanceled();
-        }
-        IndexableFilesIterator provider = providers.get(i);
-        if (!provider.iterateFiles(project, processor, indexableFilesDeduplicateFilter)) {
-          break;
-        }
-        if (indicator != null) {
-          indicator.setFraction((i + 1) * 1.0 / providers.size());
-        }
-      }
-    } finally {
+    for (IndexableFilesIterator provider : providers) {
       if (indicator != null) {
-        indicator.popState();
-        indicator.setIndeterminate(wasIndeterminate);
+        indicator.checkCanceled();
+      }
+      if (!provider.iterateFiles(project, processor, indexableFilesDeduplicateFilter)) {
+        break;
       }
     }
   }
@@ -485,7 +467,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
                                                         @Nullable final IdFilter projectFilesFilter,
                                                         @Nullable IntSet restrictedIds) {
     IntPredicate accessibleFileFilter = getAccessibleFileIdFilter(filter.getProject());
-    ValueContainer.IntPredicate idChecker = projectFilesFilter == null ? accessibleFileFilter::test : id ->
+    IntPredicate idChecker = projectFilesFilter == null ? accessibleFileFilter : id ->
       projectFilesFilter.containsFileId(id) && accessibleFileFilter.test(id) && (restrictedIds == null || restrictedIds.contains(id));
     Condition<? super K> keyChecker = __ -> {
       ProgressManager.checkCanceled();
@@ -494,7 +476,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
     ThrowableConvertor<UpdatableIndex<K, V, FileContent>, IntSet, StorageException> convertor = index -> {
       IndexDebugProperties.DEBUG_INDEX_ID.set(indexId);
       try {
-        return InvertedIndexUtil.collectInputIdsContainingAllKeys(index, dataKeys, keyChecker, valueChecker, idChecker);
+        return InvertedIndexUtil.collectInputIdsContainingAllKeys(index, dataKeys, keyChecker, valueChecker, idChecker, ProgressManager::checkCanceled);
       }
       finally {
         IndexDebugProperties.DEBUG_INDEX_ID.remove();

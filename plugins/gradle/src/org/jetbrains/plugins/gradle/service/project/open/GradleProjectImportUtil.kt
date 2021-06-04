@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:JvmName("GradleProjectImportUtil")
 package org.jetbrains.plugins.gradle.service.project.open
 
@@ -21,6 +21,7 @@ import org.jetbrains.plugins.gradle.settings.GradleSettings
 import org.jetbrains.plugins.gradle.util.GradleConstants
 import org.jetbrains.plugins.gradle.util.GradleEnvironment
 import org.jetbrains.plugins.gradle.util.GradleUtil
+import org.jetbrains.plugins.gradle.util.setupGradleJvm
 import java.nio.file.Path
 
 fun canOpenGradleProject(file: VirtualFile): Boolean =
@@ -48,6 +49,18 @@ fun linkAndRefreshGradleProject(projectFilePath: String, project: Project) {
 }
 
 @ApiStatus.Internal
+fun createLinkSettings(projectDirectory: Path, project: Project): GradleProjectSettings {
+  val gradleSettings = GradleSettings.getInstance(project)
+  gradleSettings.setupGradleSettings()
+  val gradleProjectSettings = GradleProjectSettings()
+  gradleProjectSettings.setupGradleProjectSettings(project, projectDirectory)
+
+  val gradleVersion = gradleProjectSettings.resolveGradleVersion()
+  setupGradleJvm(project, gradleProjectSettings, gradleVersion)
+  return gradleProjectSettings
+}
+
+@ApiStatus.Internal
 fun GradleSettings.setupGradleSettings() {
   gradleVmOptions = GradleEnvironment.Headless.GRADLE_VM_OPTIONS ?: gradleVmOptions
   isOfflineWork = GradleEnvironment.Headless.GRADLE_OFFLINE?.toBoolean() ?: isOfflineWork
@@ -56,19 +69,19 @@ fun GradleSettings.setupGradleSettings() {
 }
 
 @ApiStatus.Internal
-fun GradleProjectSettings.setupGradleProjectSettings(projectDirectory: Path) {
+fun GradleProjectSettings.setupGradleProjectSettings(project: Project, projectDirectory: Path) {
   externalProjectPath = projectDirectory.systemIndependentPath
   isUseQualifiedModuleNames = true
   distributionType = GradleEnvironment.Headless.GRADLE_DISTRIBUTION_TYPE?.let(DistributionType::valueOf)
                      ?: DistributionType.DEFAULT_WRAPPED
-  gradleHome = GradleEnvironment.Headless.GRADLE_HOME ?: suggestGradleHome()
+  gradleHome = GradleEnvironment.Headless.GRADLE_HOME ?: suggestGradleHome(project)
 }
 
-private fun suggestGradleHome(): String? {
+private fun suggestGradleHome(project: Project): String? {
   val installationManager = ApplicationManager.getApplication().getService(GradleInstallationManager::class.java)
   val lastUsedGradleHome = GradleUtil.getLastUsedGradleHome().nullize()
   if (lastUsedGradleHome != null) return lastUsedGradleHome
-  val gradleHome = installationManager.autodetectedGradleHome ?: return null
+  val gradleHome = installationManager.getAutodetectedGradleHome(project) ?: return null
   return FileUtil.toCanonicalPath(gradleHome.path)
 }
 

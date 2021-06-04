@@ -23,9 +23,7 @@ import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 public class PyQualifiedNameCompletionMatcher {
   private static final Logger LOG = Logger.getInstance(PyQualifiedNameCompletionMatcher.class);
@@ -34,7 +32,6 @@ public class PyQualifiedNameCompletionMatcher {
   }
 
   public static void processMatchingExportedNames(@NotNull QualifiedName qualifiedNamePattern,
-                                                  @Nullable QualifiedName originallyTypedAlias,
                                                   @NotNull PsiFile currentFile,
                                                   @NotNull GlobalSearchScope scope,
                                                   @NotNull Processor<? super ExportedName> processor) {
@@ -49,13 +46,20 @@ public class PyQualifiedNameCompletionMatcher {
     IndexLookupStats stats = new IndexLookupStats();
     try {
       IdFilter idFilter = IdFilter.getProjectIdFilter(project, true);
+
+      List<String> matchingAttributeNames = new ArrayList<>();
       stubIndex.processAllKeys(PyExportedModuleAttributeIndex.KEY, attributeName -> {
         ProgressManager.checkCanceled();
         stats.scannedKeys++;
         if (!matcher.attributeMatches(attributeName)) return true;
         stats.matchingKeys++;
-        return stubIndex.processElements(PyExportedModuleAttributeIndex.KEY,
-                                         attributeName, project, moduleMatchingScope, idFilter, PyElement.class, element -> {
+        matchingAttributeNames.add(attributeName);
+        return true;
+      }, moduleMatchingScope, idFilter);
+
+      for (String attributeName : matchingAttributeNames) {
+        stubIndex.processElements(PyExportedModuleAttributeIndex.KEY,
+                                  attributeName, project, moduleMatchingScope, idFilter, PyElement.class, element -> {
             ProgressManager.checkCanceled();
             VirtualFile vFile = element.getContainingFile().getVirtualFile();
             QualifiedName moduleQualifiedName = findQualifiedNameInClosestRoot(vFile, project);
@@ -73,13 +77,13 @@ public class PyQualifiedNameCompletionMatcher {
             }
             QualifiedName attributeQualifiedName = importPath.append(attributeName);
             if (alreadySuggestedAttributes.add(attributeQualifiedName)) {
-              if (!processor.process(new ExportedName(attributeQualifiedName, originallyTypedAlias, element))) {
+              if (!processor.process(new ExportedName(attributeQualifiedName, element))) {
                 return false;
               }
             }
             return true;
           });
-      }, moduleMatchingScope, idFilter);
+      }
     }
     catch (ProcessCanceledException e) {
       stats.cancelled = true;
@@ -122,12 +126,10 @@ public class PyQualifiedNameCompletionMatcher {
 
   public static final class ExportedName {
     private final QualifiedName myQualifiedName;
-    private final QualifiedName myOriginallyTypedQName;
     private final PyElement myElement;
 
-    private ExportedName(@NotNull QualifiedName qualifiedName, @Nullable QualifiedName originallyTypedQName, @NotNull PyElement element) {
+    private ExportedName(@NotNull QualifiedName qualifiedName, @NotNull PyElement element) {
       myQualifiedName = qualifiedName;
-      myOriginallyTypedQName = originallyTypedQName;
       myElement = element;
     }
 
@@ -136,21 +138,9 @@ public class PyQualifiedNameCompletionMatcher {
       return myQualifiedName;
     }
 
-    @Nullable
-    public QualifiedName getOriginallyTypedQName() {
-      return myOriginallyTypedQName;
-    }
-
     @NotNull
     public PyElement getElement() {
       return myElement;
-    }
-
-    @NotNull
-    public QualifiedName getQualifiedNameWithUserTypedAlias() {
-      return myOriginallyTypedQName != null
-             ? myOriginallyTypedQName.removeLastComponent().append(myQualifiedName.getLastComponent())
-             : myQualifiedName;
     }
   }
 

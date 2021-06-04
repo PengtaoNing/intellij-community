@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.documentation;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -30,6 +30,7 @@ import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsUtil;
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
+import com.intellij.openapi.editor.impl.EditorCssFontResolver;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
@@ -69,6 +70,7 @@ import com.intellij.ui.popup.PopupPositionManager;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.scale.ScaleContext;
 import com.intellij.util.*;
+import com.intellij.util.containers.Stack;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.accessibility.ScreenReader;
 import org.jetbrains.annotations.*;
@@ -83,7 +85,6 @@ import javax.swing.plaf.TextUI;
 import javax.swing.text.*;
 import javax.swing.text.html.HTML;
 import javax.swing.text.html.HTMLDocument;
-import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.ImageView;
 import java.awt.*;
 import java.awt.event.*;
@@ -276,7 +277,7 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
       UIUtil.doNotScrollToCaret(myEditorPane);
     }
     myEditorPane.setBackground(EditorColorsUtil.getGlobalOrDefaultColor(COLOR_KEY));
-    HTMLEditorKit editorKit = new JBHtmlEditorKit(true, true) {
+    JBHtmlEditorKit editorKit = new JBHtmlEditorKit(true, true) {
       @Override
       public ViewFactory getViewFactory() {
         JBHtmlFactory factory = new JBHtmlFactory() {
@@ -363,11 +364,11 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
     myExternalDocAction.registerCustomShortcutSet(CustomShortcutSet.fromString("UP"), this);
     myExternalDocAction.registerCustomShortcutSet(ActionManager.getInstance().getAction(IdeActions.ACTION_EXTERNAL_JAVADOC).getShortcutSet(), myEditorPane);
     edit.registerCustomShortcutSet(CommonShortcuts.getEditSource(), this);
-    ActionPopupMenu contextMenu = ((ActionManagerImpl)ActionManager.getInstance()).createActionPopupMenu(
-      ActionPlaces.JAVADOC_TOOLBAR, actions, new MenuItemPresentationFactory(true));
     PopupHandler popupHandler = new PopupHandler() {
       @Override
       public void invokePopup(Component comp, int x, int y) {
+        ActionPopupMenu contextMenu = ((ActionManagerImpl)ActionManager.getInstance()).createActionPopupMenu(
+          ActionPlaces.JAVADOC_TOOLBAR, actions, new MenuItemPresentationFactory(true));
         contextMenu.getComponent().show(comp, x, y);
       }
     };
@@ -408,6 +409,7 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
       }
     };
     myToolBar.setSecondaryActionsIcon(AllIcons.Actions.More, true);
+    myToolBar.setTargetComponent(this);
 
     JLayeredPane layeredPane = new JBLayeredPane() {
       @Override
@@ -550,15 +552,16 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
     });
   }
 
-  private static void prepareCSS(@NotNull HTMLEditorKit editorKit) {
+  private static void prepareCSS(@NotNull JBHtmlEditorKit editorKit) {
     Color borderColor = UIUtil.getTooltipSeparatorColor();
     int leftPadding = 8;
     int definitionTopPadding = 4;
-    String editorFontName = StringUtil.escapeQuotes(EditorColorsManager.getInstance().getGlobalScheme().getEditorFontName());
-    editorKit.getStyleSheet().addRule("tt {font-family:\"" + editorFontName + "\"; font-size: 96%;}");
-    editorKit.getStyleSheet().addRule("code {font-family:\"" + editorFontName + "\"; font-size: 96%;}");
-    editorKit.getStyleSheet().addRule("pre {font-family:\"" + editorFontName + "\"; font-size: 96%;}");
-    editorKit.getStyleSheet().addRule(".pre {font-family:\"" + editorFontName + "\"; font-size: 96%;}");
+    editorKit.setFontResolver(EditorCssFontResolver.getGlobalInstance());
+    String editorFontStyle = "{font-family:\"" + EditorCssFontResolver.EDITOR_FONT_NAME_PLACEHOLDER + "\"; font-size: 96%;}";
+    editorKit.getStyleSheet().addRule("tt" + editorFontStyle);
+    editorKit.getStyleSheet().addRule("code" + editorFontStyle);
+    editorKit.getStyleSheet().addRule("pre" + editorFontStyle);
+    editorKit.getStyleSheet().addRule(".pre" + editorFontStyle);
     editorKit.getStyleSheet().addRule("html { padding-bottom: 8px; }");
     editorKit.getStyleSheet().addRule("h1, h2, h3, h4, h5, h6 { margin-top: 0; padding-top: 1px; }");
     editorKit.getStyleSheet().addRule("a { color: #" + ColorUtil.toHex(getLinkColor()) + "; text-decoration: none;}");
@@ -893,7 +896,7 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
     hint.addResizeListener(this::onManualResizing, this);
     ApplicationManager.getApplication().getMessageBus().connect(this).subscribe(AnActionListener.TOPIC, new AnActionListener() {
       @Override
-      public void afterActionPerformed(@NotNull AnAction action, @NotNull DataContext dataContext, @NotNull AnActionEvent event) {
+      public void afterActionPerformed(@NotNull AnAction action, @NotNull AnActionEvent event, @NotNull AnActionResult result) {
         if (action instanceof WindowAction) onManualResizing();
       }
     });
@@ -911,7 +914,28 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
     TextUI ui = myEditorPane.getUI();
     View view = ui.getRootView(myEditorPane);
     View definition = findDefinition(view);
-    return definition != null ? (int)definition.getPreferredSpan(View.X_AXIS) : -1;
+
+    if (definition == null) {
+      return -1;
+    }
+    int defaultPreferredSize = (int)definition.getPreferredSpan(View.X_AXIS);
+
+    // Heuristics to calculate popup width based on the amount of the content.
+    // The proportions are set for 4 chars/1px in range between 200 and 1000 chars.
+    // 200 chars and less is 300px, 1000 chars and more is 500px.
+    // These values were calculated based on experiments with varied content and manual resizing to comfortable width.
+    int textLength = definition.getDocument().getLength();
+    final int contentLengthPreferredSize;
+    if (textLength < 200) {
+      contentLengthPreferredSize = JBUIScale.scale(300);
+    }
+    else if (textLength > 200 && textLength < 1000) {
+      contentLengthPreferredSize = JBUIScale.scale(300) + JBUIScale.scale(1) * (textLength - 200) * (500 - 300) / (1000 - 200);
+    }
+    else {
+      contentLengthPreferredSize = JBUIScale.scale(500);
+    }
+    return Math.max(contentLengthPreferredSize, defaultPreferredSize);
   }
 
   private static View findDefinition(View view) {
@@ -1180,9 +1204,10 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
       private Image getImage() {
         if (!myImageLoaded) {
           Image image = loadImageFromUrl();
-          myImage = ImageUtil.toBufferedImage(image != null ?
-                                              image :
-                                              ((ImageIcon)UIManager.getLookAndFeelDefaults().get("html.missingImage")).getImage());
+          myImage = ImageUtil.toBufferedImage(
+            image != null ? image : ((ImageIcon)UIManager.getLookAndFeelDefaults().get("html.missingImage")).getImage(),
+            false, true);
+
           myImageLoaded = true;
         }
         return myImage;

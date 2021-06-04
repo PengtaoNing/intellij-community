@@ -13,12 +13,12 @@ import com.intellij.execution.ui.TargetAwareRunConfigurationEditor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.actionSystem.DataKey;
-import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.NonBlockingReadAction;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.ConfigurationException;
+import com.intellij.openapi.options.ConfigurationQuickFix;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.options.SettingsEditorListener;
 import com.intellij.openapi.project.DumbService;
@@ -34,7 +34,7 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.util.Alarm;
-import com.intellij.util.SingleAlarm;
+import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.NonUrgentExecutor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBUI;
@@ -42,7 +42,6 @@ import com.intellij.util.ui.UI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.concurrency.CancellablePromise;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -54,7 +53,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 
 public final class SingleConfigurationConfigurable<Config extends RunConfiguration> extends BaseRCSettingsConfigurable {
 
@@ -74,8 +72,10 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
   private String myDefaultTargetName;
   private String myFolderName;
   private boolean myChangingNameFromCode;
-  private CancellablePromise<ValidationResult> myCancellablePromise;
-  private final SingleAlarm myValidationAlarm;
+  private final Alarm myValidationAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, getEditor());
+  private ValidationResult myLastValidationResult = null;
+  private volatile boolean myValidationRequested = true;
+  private final List<ValidationListener> myValidationListeners = new SmartList<>();
 
   private SingleConfigurationConfigurable(@NotNull RunnerAndConfigurationSettings settings, @Nullable Executor executor) {
     super(ConfigurationSettingsEditorWrapper.createWrapper(settings), settings);
@@ -110,14 +110,6 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
         requestToUpdateWarning();
       }
     });
-    
-    boolean inplaceValidationSupported = getEditor() instanceof RunnerAndConfigurationSettingsEditor &&
-                                         ((RunnerAndConfigurationSettingsEditor)getEditor()).isInplaceValidationSupported();
-    myValidationAlarm = new SingleAlarm(() -> {
-      if (myComponent != null && !inplaceValidationSupported) {
-        validateResultOnBackgroundThread(configurationException -> myComponent.updateValidationResultVisibility(configurationException));
-      }
-    }, 100, getEditor(), Alarm.ThreadToUse.SWING_THREAD, ModalityState.current());
   }
 
   @NotNull
@@ -165,7 +157,41 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
   }
 
   void requestToUpdateWarning() {
-    myValidationAlarm.request();
+    myValidationRequested = false;
+    if (isInplaceValidationSupported()) return;
+
+    addValidationRequest();
+  }
+
+  private void addValidationRequest() {
+    if (myComponent == null) return;
+
+    ModalityState modalityState = ModalityState.stateForComponent(myComponent.myWholePanel);
+    if (modalityState == ModalityState.NON_MODAL) return;
+
+    myValidationRequested = true;
+    myValidationAlarm.cancelAllRequests();
+    myValidationAlarm.addRequest(() -> {
+      if (myComponent != null) {
+        try {
+          RunnerAndConfigurationSettings snapshot = createSnapshot(false);
+          snapshot.setName(getNameText());
+          validateResultOnBackgroundThread(snapshot);
+        }
+        catch (ConfigurationException e) {
+          setValidationResult(createValidationResult(null, e));
+        }
+      }
+    }, 100, modalityState);
+  }
+
+  void addValidationListener(ValidationListener listener) {
+    myValidationListeners.add(listener);
+  }
+
+  private boolean isInplaceValidationSupported() {
+    return getEditor() instanceof RunnerAndConfigurationSettingsEditor &&
+           ((RunnerAndConfigurationSettingsEditor)getEditor()).isInplaceValidationSupported();
   }
 
   @Override
@@ -173,6 +199,9 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
     myComponent.myNameText.setEnabled(!myBrokenConfiguration);
     JComponent result = myComponent.getWholePanel();
     DataManager.registerDataProvider(result, dataId -> {
+      if (myComponent == null) {
+        return null; // disposed
+      }
       if (ConfigurationSettingsEditorWrapper.CONFIGURATION_EDITOR_KEY.is(dataId)) {
         return getEditor();
       }
@@ -196,26 +225,35 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
   public boolean isStoredInFile() {
     return myComponent != null && myComponent.myRCStorageUi != null && myComponent.myRCStorageUi.isStoredInFile();
   }
-  
-  private void validateResultOnBackgroundThread(Consumer<ValidationResult> onUIThread) {
-    if (myCancellablePromise != null && !myCancellablePromise.isDone()) {
-      myCancellablePromise.cancel();
-    }
-    myCancellablePromise = getValidateAction()
-      .finishOnUiThread(ModalityState.current(), onUIThread)
+
+  private void validateResultOnBackgroundThread(RunnerAndConfigurationSettings snapshot) {
+    getValidateAction(snapshot)
+      .expireWith(getEditor())
+      .coalesceBy(getEditor())
+      .finishOnUiThread(ModalityState.current(), this::setValidationResult)
       .submit(NonUrgentExecutor.getInstance());
   }
 
-  public boolean isValid() {
-    return getValidateAction().executeSynchronously() == null;
+  private void setValidationResult(ValidationResult result) {
+    myLastValidationResult = result;
+    if (myComponent != null && !isInplaceValidationSupported()) {
+      myComponent.updateValidationResultVisibility(result);
+    }
+    for (ValidationListener listener : myValidationListeners) {
+      listener.validationCompleted(result);
+    }
   }
-  
-  private NonBlockingReadAction<ValidationResult> getValidateAction() {
+
+  public boolean isValid() {
+    if (!myValidationRequested) {
+      addValidationRequest();
+    }
+    return myLastValidationResult == null;
+  }
+
+  private NonBlockingReadAction<ValidationResult> getValidateAction(RunnerAndConfigurationSettings snapshot) {
     return ReadAction.nonBlocking(() -> {
-      RunnerAndConfigurationSettings snapshot = null;
       try {
-        snapshot = createSnapshot(false);
-        snapshot.setName(getNameText());
         snapshot.checkSettings(myExecutor);
         for (Executor executor : Executor.EXECUTOR_EXTENSION_NAME.getExtensionList()) {
           ProgramRunner<?> runner = ProgramRunner.getRunner(executor.getId(), snapshot.getConfiguration());
@@ -228,8 +266,7 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
         return createValidationResult(snapshot, e);
       }
       return null;
-    })
-      .expireWith(getEditor());
+    });
   }
 
   private ValidationResult createValidationResult(RunnerAndConfigurationSettings snapshot, ConfigurationException e) {
@@ -243,14 +280,15 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
 
   @Nullable
   private Runnable getQuickFix(RunnerAndConfigurationSettings snapshot, ConfigurationException exception) {
-    Runnable quickFix = exception.getQuickFix();
+    ConfigurationQuickFix quickFix = exception.getConfigurationQuickFix();
     if (quickFix != null && snapshot != null) {
       return () -> {
-        quickFix.run();
+        quickFix.applyFix(DataManager.getInstance().getDataContext(myComponent.myWholePanel));
         getEditor().resetFrom(snapshot);
       };
     }
-    return quickFix;
+    return quickFix == null ? null :
+           () -> quickFix.applyFix(DataManager.getInstance().getDataContext(myComponent.myWholePanel));
   }
 
   private static void checkConfiguration(@NotNull ProgramRunner<?> runner, @NotNull RunnerAndConfigurationSettings snapshot)
@@ -418,7 +456,6 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
       myRCStorageUi = !myProject.isDefault() ? new RunConfigurationStorageUi(myProject, () -> setModified(true))
                                              : null;
       if (myRCStorageUi != null) {
-        myRCStorageUi.setShowCompatibilityHint(true);
         myRCStoragePanel.add(myRCStorageUi.createComponent());
       }
 
@@ -462,7 +499,7 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
       boolean targetAware =
         configuration instanceof TargetEnvironmentAwareRunProfile &&
         ((TargetEnvironmentAwareRunProfile)configuration).getDefaultLanguageRuntimeType() != null &&
-        Experiments.getInstance().isFeatureEnabled("run.targets");
+        RunTargetsEnabled.get();
       myRunOnPanel.setVisible(targetAware);
       if (targetAware) {
         String defaultTargetName = ((TargetEnvironmentAwareRunProfile)configuration).getDefaultTargetName();
@@ -556,5 +593,9 @@ public final class SingleConfigurationConfigurable<Config extends RunConfigurati
     if (editor instanceof TargetAwareRunConfigurationEditor) {
       ((TargetAwareRunConfigurationEditor)editor).targetChanged(chosenTarget);
     }
+  }
+
+  interface ValidationListener {
+    void validationCompleted(ValidationResult result);
   }
 }

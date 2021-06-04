@@ -5,6 +5,7 @@ import com.intellij.lang.LangBundle
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
@@ -15,17 +16,16 @@ import com.intellij.util.io.delete
 import com.intellij.util.io.write
 import com.intellij.util.system.CpuArch
 import java.nio.file.Path
-import java.nio.file.Paths
 
 private val LOG = logger<RuntimeChooserPaths>()
 
 @Service(Service.Level.APP)
 class RuntimeChooserPaths {
   private fun computeJdkFilePath(): Path {
-    //also used in the com.intellij.ide.SystemHealthMonitor.checkRuntime, but after a discussion with Roman, we decided to copy
-    val appName = ApplicationNamesInfo.getInstance().scriptName
-    val configName = appName + (if (!SystemInfo.isWindows) "" else if (CpuArch.isIntel64()) "64.exe" else ".exe") + ".jdk"
-    return Paths.get(PathManager.getConfigPath(), configName)
+    val directory = PathManager.getCustomOptionsDirectory() ?: throw IllegalStateException("Runtime selection not supported")
+    val scriptName = ApplicationNamesInfo.getInstance().scriptName
+    val configName = scriptName + (if (!SystemInfo.isWindows) "" else if (CpuArch.isIntel64()) "64.exe" else ".exe") + ".jdk"
+    return Path.of(directory, configName)
   }
 
   fun installCustomJdk(@NlsSafe jdkName: String,
@@ -35,14 +35,16 @@ class RuntimeChooserPaths {
       resolveSuggestedHome(indicator)
     }
     catch (t: Throwable) {
+      if (t is ControlFlowException) throw t
       LOG.warn("resolve failed. ${t.message}", t)
       return@runWithProgress null
     }
 
     val home = RuntimeChooserJreValidator.testNewJdkUnderProgress(
+      allowRunProcesses = true,
       computeHomePath = { sdkHome?.toAbsolutePath()?.toString() },
       callback = object : RuntimeChooserJreValidatorCallback<Path?> {
-        override fun onSdkResolved(versionString: String, sdkHome: Path) = sdkHome
+        override fun onSdkResolved(displayName: String?, versionString: String, sdkHome: Path) = sdkHome
         override fun onError(message: String): Path? {
           RuntimeChooserMessages.showErrorMessage(message)
           return null
@@ -76,6 +78,7 @@ class RuntimeChooserPaths {
           }
         }
         catch (t: Throwable) {
+          if (t is ControlFlowException) throw t
           LOG.warn("Failed to change boot runtime in $jdkFileShadow. ${t.message}", t)
           RuntimeChooserMessages.showErrorMessage(LangBundle.message("dialog.message.choose.ide.runtime.unknown.error", t.localizedMessage))
         }

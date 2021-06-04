@@ -6,15 +6,14 @@ import com.intellij.ide.CommandLineInspectionProjectConfigurator.ConfiguratorCon
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.autoimport.AutoImportProjectTracker
-import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListenerAdapter
-import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode.MODAL_SYNC
 import com.intellij.openapi.externalSystem.service.notification.ExternalSystemProgressNotificationManager
-import com.intellij.openapi.externalSystem.util.ExternalSystemUtil.refreshProject
+import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.registry.Registry
+import org.jetbrains.plugins.gradle.service.project.open.createLinkSettings
 import org.jetbrains.plugins.gradle.settings.GradleImportHintService
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 import org.jetbrains.plugins.gradle.util.GradleBundle
@@ -22,6 +21,8 @@ import org.jetbrains.plugins.gradle.util.GradleConstants
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
+import java.nio.file.Paths
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 private val LOG = Logger.getInstance(GradleCommandLineProjectConfigurator::class.java)
@@ -49,56 +50,61 @@ class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigu
     val state = GradleImportHintService.getInstance(project).state
 
     if (state.skip) return
-    val externalSystemState = ConcurrentHashMap<ExternalSystemTaskId, ExternalSystemState>()
+    if (GradleSettings.getInstance(project).linkedProjectsSettings.isEmpty()) {
+      linkProjects(basePath, project)
+    }
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
-    progressManager.addNotificationListener(StateNotificationListener(externalSystemState))
-
-    importProjects(basePath, project)
-
-    checkImportState(externalSystemState)
+    val notificationListener = StateNotificationListener()
+    try {
+      progressManager.addNotificationListener(notificationListener)
+      importProjects(project)
+      notificationListener.waitForImportEnd()
+    } finally {
+      progressManager.removeNotificationListener(notificationListener)
+    }
   }
 
-  private fun importProjects(basePath: String, project: Project) {
-    if (runGradleHintImport(basePath, project)) {
-      LOG.info("Gradle hint import was used")
+  private fun linkProjects(basePath: String, project: Project) {
+    if (linkGradleHintProjects(basePath, project)) {
       return
     }
-
-    if (runAutoRefreshImport(project)) {
-      LOG.info("Gradle auto refresh import was used")
-      return
-    }
-
-    val gradleGroovyDslFile = basePath + "/" + GradleConstants.DEFAULT_SCRIPT_NAME
-    val kotlinDslGradleFile = basePath + "/" + GradleConstants.KOTLIN_DSL_SCRIPT_NAME
-    if (FileUtil.findFirstThatExist(gradleGroovyDslFile, kotlinDslGradleFile) == null) return
-
-    refreshProject(basePath, getImportSpecBuilder(project))
-    LOG.info("Gradle import by root project path was used")
+    linkRootProject(basePath, project)
   }
 
-
-  private fun runAutoRefreshImport(project: Project): Boolean {
+  private fun importProjects(project: Project) {
     if (!GradleSettings.getInstance(project).linkedProjectsSettings.isEmpty()) {
       Registry.get(DISABLE_GRADLE_AUTO_IMPORT).setValue(false)
       AutoImportProjectTracker.getInstance(project).scheduleProjectRefresh()
       Registry.get(DISABLE_GRADLE_AUTO_IMPORT).setValue(true)
-      return true
     }
-    return false
   }
 
-  private fun runGradleHintImport(basePath: String, project: Project): Boolean {
+  private fun linkRootProject(basePath: String, project: Project): Boolean {
+    val gradleGroovyDslFile = basePath + "/" + GradleConstants.DEFAULT_SCRIPT_NAME
+    val kotlinDslGradleFile = basePath + "/" + GradleConstants.KOTLIN_DSL_SCRIPT_NAME
+    if (FileUtil.findFirstThatExist(gradleGroovyDslFile, kotlinDslGradleFile) == null) return false
+
+    LOG.info("Link gradle project from root directory")
+
+    val settings = createLinkSettings(Paths.get(basePath), project)
+    ExternalSystemApiUtil.getSettings(project, GradleConstants.SYSTEM_ID).linkProject(settings)
+    return true
+  }
+
+  private fun linkGradleHintProjects(basePath: String, project: Project): Boolean {
     val state = GradleImportHintService.getInstance(project).state
 
     if (state.projectsToImport.isNotEmpty()) {
       for (projectPath in state.projectsToImport) {
-        val buildFile = File(basePath).toPath().resolve(projectPath).toFile()
-        if (buildFile.exists()) {
-          refreshProject(buildFile.absolutePath, getImportSpecBuilder(project))
+        val buildFile = File(basePath).toPath().resolve(projectPath)
+        if (buildFile.toFile().exists()) {
+          LOG.info("Link gradle project from intellij.yaml: $projectPath")
+
+          val settings = createLinkSettings(buildFile.parent, project)
+          ExternalSystemApiUtil.getSettings(project, GradleConstants.SYSTEM_ID).linkProject(settings)
         }
         else {
-          LOG.error("File for importing gradle project doesn't exist: " + buildFile.absolutePath)
+          LOG.error("File for linking gradle project doesn't exist: " + buildFile.toAbsolutePath().toString())
           return false
         }
       }
@@ -107,41 +113,46 @@ class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigu
     return false
   }
 
-  private fun checkImportState(externalSystemState: Map<ExternalSystemTaskId, ExternalSystemState>) {
-    externalSystemState.forEach { (key, value) ->
-      if (value != ExternalSystemState.SUCCESS) {
-        throw IllegalStateException("Gradle project ${key.ideProjectId} import failed. Project import status: $value")
-      }
-    }
-  }
 
-  private fun getImportSpecBuilder(project: Project): ImportSpecBuilder =
-    ImportSpecBuilder(project, GradleConstants.SYSTEM_ID).use(MODAL_SYNC)
+  class StateNotificationListener : ExternalSystemTaskNotificationListenerAdapter() {
+    private val externalSystemState = ConcurrentHashMap<ExternalSystemTaskId, CompletableFuture<ExternalSystemTaskId>>()
 
-  class StateNotificationListener(private val externalSystemState: MutableMap<ExternalSystemTaskId, ExternalSystemState>) :
-    ExternalSystemTaskNotificationListenerAdapter() {
     override fun onSuccess(id: ExternalSystemTaskId) {
-      externalSystemState[id] = ExternalSystemState.SUCCESS
       LOG.info("Gradle import success: ${id.ideProjectId}")
+      val future = externalSystemState[id] ?: return
+      future.complete(id)
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
-      externalSystemState[id] = ExternalSystemState.FAILURE
       LOG.error("Gradle import failure ${id.ideProjectId}", e)
+      val future = externalSystemState[id] ?: return
+      future.completeExceptionally(IllegalStateException("Gradle project ${id.ideProjectId} import failed.", e))
     }
 
     override fun onCancel(id: ExternalSystemTaskId) {
-      externalSystemState[id] = ExternalSystemState.CANCELLED
       LOG.error("Gradle import canceled ${id.ideProjectId}")
+      val future = externalSystemState[id] ?: return
+      future.completeExceptionally(IllegalStateException("Import of ${id.ideProjectId} was canceled"))
     }
 
     override fun onStart(id: ExternalSystemTaskId) {
-      externalSystemState[id] = ExternalSystemState.STARTED
+      externalSystemState[id] = CompletableFuture()
       LOG.info("Gradle import started ${id.ideProjectId}")
+    }
+
+    fun waitForImportEnd() {
+      externalSystemState.values.forEach { it.get() }
+    }
+
+    override fun onEnd(id: ExternalSystemTaskId) {
+      val future = externalSystemState[id] ?: return
+      if (future.isDone) return
+      LOG.error("Gradle import finished ${id.ideProjectId} without success event")
+      future.completeExceptionally(IllegalStateException("Import of ${id.ideProjectId} was finished without success event"))
     }
   }
 
-  class LoggingNotificationListener() : ExternalSystemTaskNotificationListenerAdapter() {
+  class LoggingNotificationListener : ExternalSystemTaskNotificationListenerAdapter() {
     override fun onTaskOutput(id: ExternalSystemTaskId, text: String, stdOut: Boolean) {
       val gradleText = (if (stdOut) "" else "STDERR: ") + text
       gradleLogWriter.write(gradleText)
@@ -151,12 +162,5 @@ class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigu
     override fun onEnd(id: ExternalSystemTaskId) {
       gradleLogWriter.flush()
     }
-  }
-
-  enum class ExternalSystemState {
-    STARTED,
-    CANCELLED,
-    FAILURE,
-    SUCCESS
   }
 }

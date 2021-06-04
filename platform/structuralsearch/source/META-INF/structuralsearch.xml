@@ -20,6 +20,7 @@
     <projectService serviceImplementation="com.intellij.structuralsearch.plugin.ui.ExistingTemplatesComponent"/>
     <projectService serviceImplementation="com.intellij.structuralsearch.plugin.ui.ConfigurationManager"/>
     <projectService serviceImplementation="com.intellij.structuralsearch.inspection.SSBasedInspectionCompiledPatternsCache"/>
+    <applicationService serviceImplementation="com.intellij.structuralsearch.plugin.ui.StructuralSearchTemplateBuilder"/>
     <applicationService serviceImplementation="com.intellij.structuralsearch.plugin.ui.ConfigurationManager$ConfigurationManagerState"/>
 
     <typedHandler implementation="com.intellij.structuralsearch.plugin.ui.StructuralSearchTypedHandler"/>
@@ -29,6 +30,7 @@
     <codeInsight.linkHandler prefix="#ssr_edit_filters/" handlerClass="com.intellij.structuralsearch.plugin.ui.filters.FilterTooltipLinkHandler"/>
     <daemon.highlightInfoFilter implementation="com.intellij.structuralsearch.plugin.ui.StructuralSearchHighlightInfoFilter"/>
     <inspectionProfileActionProvider implementation="com.intellij.structuralsearch.inspection.StructuralSearchProfileActionProvider"/>
+    <emptyInspectionTreeLinkProvider implementation="com.intellij.structuralsearch.inspection.InspectionTreeAdvertiser"/>
 
     <structuralsearch.filter implementation="com.intellij.structuralsearch.plugin.ui.filters.ContextFilter"/>
     <structuralsearch.filter implementation="com.intellij.structuralsearch.plugin.ui.filters.CountFilter"/>

@@ -1,13 +1,11 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.gdpr;
 
 import com.intellij.ide.Prefs;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.PlatformUtils;
-import com.intellij.util.ResourceUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.*;
@@ -26,7 +24,9 @@ public final class EndUserAgreement {
 
   private static final String PRIVACY_POLICY_DOCUMENT_NAME = "privacy";
   private static final String PRIVACY_POLICY_EAP_DOCUMENT_NAME = PRIVACY_POLICY_DOCUMENT_NAME + "Eap";
+  private static final String CWM_GUEST_EULA_NAME = "cwmGuestEua";
   private static final String EULA_DOCUMENT_NAME = "eua";
+  private static final String EULA_COMMUNITY_DOCUMENT_NAME = "euaCommunity";
   private static final String EULA_EAP_DOCUMENT_NAME = EULA_DOCUMENT_NAME + "Eap";
 
   private static final String PRIVACY_POLICY_CONTENT_FILE_NAME = "Cached";
@@ -131,7 +131,7 @@ public final class EndUserAgreement {
 
   private static void writeToFile(@NotNull Path file, @NotNull String text) throws IOException {
     Files.createDirectories(file.getParent());
-    Files.write(file, text.getBytes(StandardCharsets.UTF_8));
+    Files.writeString(file, text);
   }
 
   public static void update(@NotNull String docName, @NotNull String text) {
@@ -150,7 +150,11 @@ public final class EndUserAgreement {
   private static @NotNull Document loadContent(String docName, String resourcePath) {
     try (InputStream stream = EndUserAgreement.class.getResourceAsStream(resourcePath)) {
       if (stream != null) {
-        return new Document(docName, ResourceUtil.loadText(stream));
+        String result;
+        try (stream) {
+          result = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        return new Document(docName, result);
       }
     }
     catch (IOException e) {
@@ -173,12 +177,18 @@ public final class EndUserAgreement {
 
   private static @NotNull String getDocumentName() {
     if (!PlatformUtils.isCommercialEdition()) {
+      if (PlatformUtils.isCommunityEdition()) {
+        return isEAP() ? DEFAULT_DOC_EAP_NAME : EULA_COMMUNITY_DOCUMENT_NAME;
+      }
+      if (PlatformUtils.isCodeWithMeGuest()) {
+        return CWM_GUEST_EULA_NAME;
+      }
       return isEAP()? PRIVACY_POLICY_EAP_DOCUMENT_NAME : PRIVACY_POLICY_DOCUMENT_NAME;
     }
 
     try {
       String docName = Files.readString(getDocumentNameFile());
-      if (!StringUtilRt.isEmptyOrSpaces(docName)) {
+      if (docName != null && !docName.isBlank()) {
         return docName;
       }
     }
@@ -235,7 +245,7 @@ public final class EndUserAgreement {
     }
 
     private static @NotNull Version parseVersion(String text) {
-      if (!StringUtilRt.isEmptyOrSpaces(text)) {
+      if (text != null && !text.isBlank()) {
         try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
           final String line = reader.readLine();
           if (line != null) {

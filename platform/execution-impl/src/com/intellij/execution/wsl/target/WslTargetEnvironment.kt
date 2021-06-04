@@ -4,16 +4,13 @@ package com.intellij.execution.wsl.target
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.Platform
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.target.HostPort
-import com.intellij.execution.target.TargetEnvironment
-import com.intellij.execution.target.TargetEnvironmentAwareRunProfileState.TargetProgressIndicator
-import com.intellij.execution.target.TargetPlatform
-import com.intellij.execution.target.TargetedCommandLine
+import com.intellij.execution.target.*
 import com.intellij.execution.wsl.WSLCommandLineOptions
 import com.intellij.execution.wsl.WSLDistribution
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.util.io.sizeOrNull
 import java.io.IOException
 import java.nio.file.Path
 import java.util.*
@@ -25,7 +22,7 @@ class WslTargetEnvironment(wslRequest: WslTargetEnvironmentRequest,
   private val myUploadVolumes: MutableMap<UploadRoot, UploadableVolume> = HashMap()
   private val myDownloadVolumes: MutableMap<DownloadRoot, DownloadableVolume> = HashMap()
   private val myTargetPortBindings: MutableMap<TargetPortBinding, Int> = HashMap()
-  private val myLocalPortBindings: MutableMap<LocalPortBinding, HostPort> = HashMap()
+  private val myLocalPortBindings: MutableMap<LocalPortBinding, ResolvedPortBinding> = HashMap()
   private val localPortBindingsSession : WslTargetLocalPortBindingsSession
 
   override val uploadVolumes: Map<UploadRoot, UploadableVolume>
@@ -34,7 +31,7 @@ class WslTargetEnvironment(wslRequest: WslTargetEnvironmentRequest,
     get() = Collections.unmodifiableMap(myDownloadVolumes)
   override val targetPortBindings: Map<TargetPortBinding, Int>
     get() = Collections.unmodifiableMap(myTargetPortBindings)
-  override val localPortBindings: Map<LocalPortBinding, HostPort>
+  override val localPortBindings: Map<LocalPortBinding, ResolvedPortBinding>
     get() = Collections.unmodifiableMap(myLocalPortBindings)
 
   override val targetPlatform: TargetPlatform
@@ -67,14 +64,15 @@ class WslTargetEnvironment(wslRequest: WslTargetEnvironmentRequest,
 
     for (localPortBinding in wslRequest.localPortBindings) {
       val targetHostPortFuture = localPortBindingsSession.getTargetHostPortFuture(localPortBinding)
-      var targetHostPort = HostPort("localhost", localPortBinding.local)
+      val localHostPort = HostPort("localhost", localPortBinding.local)
+      var targetHostPort = localHostPort
       try {
         targetHostPort = targetHostPortFuture.get(10, TimeUnit.SECONDS)
       }
       catch (e: Exception) {
         LOG.info("Cannot get target host and port for $localPortBinding")
       }
-      myLocalPortBindings[localPortBinding] = targetHostPort
+      myLocalPortBindings[localPortBinding] = ResolvedPortBinding(localHostPort, targetHostPort)
     }
   }
 
@@ -128,6 +126,20 @@ class WslTargetEnvironment(wslRequest: WslTargetEnvironmentRequest,
 
     @Throws(IOException::class)
     override fun download(relativePath: String, progressIndicator: ProgressIndicator) {
+      // Synchronization may be slow -- let us wait until file size does not change
+      // in a reasonable amount of time
+      // (see https://github.com/microsoft/WSL/issues/4197)
+      val path = localRoot.resolve(relativePath)
+      var previousSize = -2L  // sizeOrNull returns -1 if file does not exist
+      var newSize = path.sizeOrNull()
+      while (previousSize < newSize) {
+        Thread.sleep(100)
+        previousSize = newSize
+        newSize = path.sizeOrNull()
+      }
+      if (newSize == -1L) {
+        LOG.warn("Path $path was not found on local filesystem")
+      }
     }
   }
 

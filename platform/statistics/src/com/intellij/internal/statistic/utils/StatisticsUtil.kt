@@ -1,34 +1,26 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.utils
 
-import com.intellij.internal.statistic.eventLog.EventLogConfiguration
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.getProjectCacheFileName
 import java.text.SimpleDateFormat
 import java.time.ZoneOffset
 import java.util.*
-
-fun addPluginInfoTo(info: PluginInfo, data: MutableMap<String, Any>) {
-  data["plugin_type"] = info.type.name
-  if (!info.type.isSafeToReport()) return
-  val id = info.id
-  if (!id.isNullOrEmpty()) {
-    data["plugin"] = id
-  }
-  val version = info.version
-  if (!version.isNullOrEmpty()) {
-    data["plugin_version"] = version
-  }
-}
-
 
 object StatisticsUtil {
   private const val kilo = 1000
   private const val mega = kilo * kilo
 
   @JvmStatic
-  fun getProjectId(project: Project, recorderId: String): String {
-    return EventLogConfiguration.getOrCreate(recorderId).anonymize(project.getProjectCacheFileName())
+  fun addPluginInfoTo(info: PluginInfo, data: MutableMap<String, Any>) {
+    data["plugin_type"] = info.type.name
+    if (!info.type.isSafeToReport()) return
+    val id = info.id
+    if (!id.isNullOrEmpty()) {
+      data["plugin"] = id
+    }
+    val version = info.version
+    if (!version.isNullOrEmpty()) {
+      data["plugin_version"] = version
+    }
   }
 
   /**
@@ -37,6 +29,30 @@ object StatisticsUtil {
    */
   @JvmStatic
   fun getNextPowerOfTwo(value: Int): Int = if (value <= 1) 1 else Integer.highestOneBit(value - 1) shl 1
+
+  /**
+   * Anonymizes sensitive project properties by rounding it to the next power of two
+   * See `com.intellij.internal.statistic.collectors.fus.fileTypes.FileTypeUsagesCollector`
+   */
+  @JvmStatic
+  fun getNextPowerOfTwo(value: Long): Long = if (value <= 1) 1 else java.lang.Long.highestOneBit(value - 1) shl 1
+
+  /**
+   * Anonymizes value by finding upper bound in provided bounds.
+   * Allows more fine tuning then `com.intellij.internal.statistic.utils.StatisticsUtil#getNextPowerOfTwo`
+   * but requires manual maintaining.
+   *
+   * @param bounds is an integer array sorted in ascending order (required, but not checked)
+   * @return value upper bound or next power of two if no bounds were provided (as fallback)
+   * */
+  @JvmStatic
+  fun getUpperBound(value: Int, bounds: IntArray): Int {
+    if (bounds.isEmpty()) return getNextPowerOfTwo(value)
+
+    for (bound in bounds)
+      if (value <= bound) return bound
+    return bounds.last()
+  }
 
   /**
    * Anonymizes sensitive project properties by rounding it to the next value in steps list.
@@ -76,5 +92,17 @@ object StatisticsUtil {
     val ks = if (k > 0) "${k}K" else ""
     val rs = if (r > 0) "${r}" else ""
     return ms + ks + rs
+  }
+
+  /**
+   * If multiple events with duration will happen one after another, we won't merge them if they have different duration,
+   * e.g. EditorRight happens in big batches
+   */
+  fun roundDuration(durationMs: Long): Long {
+    if (durationMs >= 100 || durationMs < 0) {
+      // negative durations shouldn't happen but if they are we want to see it
+      return (durationMs / 100) * 100
+    }
+    return if (durationMs >= 50) 50 else 0
   }
 }

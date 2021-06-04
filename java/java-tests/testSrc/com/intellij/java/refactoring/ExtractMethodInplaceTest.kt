@@ -5,9 +5,14 @@ import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.codeInsight.template.impl.TemplateState
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.LanguageLevelProjectExtension
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.TextRange
+import com.intellij.pom.java.LanguageLevel
 import com.intellij.refactoring.extractMethod.newImpl.MethodExtractor
+import com.intellij.refactoring.listeners.RefactoringEventData
+import com.intellij.refactoring.listeners.RefactoringEventListener
 import com.intellij.refactoring.util.CommonRefactoringUtil.RefactoringErrorHintException
 import com.intellij.testFramework.LightJavaCodeInsightTestCase
 import com.intellij.util.ui.UIUtil
@@ -50,6 +55,57 @@ class ExtractMethodInplaceTest: LightJavaCodeInsightTestCase() {
 
   fun testGeneratedDefault(){
     doTest()
+  }
+
+  fun testRenamedExactDuplicate(){
+    doTest(changedName = "renamed")
+  }
+
+  fun testRenamedParametrizedDuplicate(){
+    doTest(changedName = "average")
+  }
+
+  fun testStaticMustBePlaced(){
+    doTest()
+  }
+
+  fun testShortenClassReferences(){
+    withLanguageLevel(project, LanguageLevel.JDK_11) {
+      doTest()
+    }
+  }
+
+  fun testRefactoringListener(){
+    templateTest {
+      configureByFile("$BASE_PATH/${getTestName(false)}.java")
+      var startReceived = false
+      var doneReceived = false
+      project.messageBus.connect().subscribe(RefactoringEventListener.REFACTORING_EVENT_TOPIC, object : RefactoringEventListener {
+        override fun refactoringStarted(refactoringId: String, beforeData: RefactoringEventData?) {
+          startReceived = true
+        }
+        override fun refactoringDone(refactoringId: String, afterData: RefactoringEventData?) {
+          doneReceived = true
+        }
+        override fun conflictsDetected(refactoringId: String, conflictsData: RefactoringEventData) = Unit
+        override fun undoRefactoring(refactoringId: String) = Unit
+      })
+      val template = startRefactoring(editor)
+      require(startReceived)
+      finishTemplate(template)
+      require(doneReceived)
+    }
+  }
+
+  private inline fun withLanguageLevel(project: Project, languageLevel: LanguageLevel, body: () -> Unit) {
+    val extension = LanguageLevelProjectExtension.getInstance(project)
+    val previousLanguageLevel = extension.languageLevel
+    try {
+      extension.languageLevel = languageLevel
+      body()
+    } finally {
+      extension.languageLevel = previousLanguageLevel
+    }
   }
 
   private fun doTest(checkResults: Boolean = true, changedName: String? = null){

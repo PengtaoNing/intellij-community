@@ -2,11 +2,13 @@
 package training.learn.lesson.general
 
 import com.intellij.codeInsight.intention.impl.ShowIntentionActionsHandler
+import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.editor.impl.EditorComponentImpl
 import training.dsl.*
 import training.dsl.LessonUtil.restoreIfModifiedOrMovedIncorrectly
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
+import java.util.concurrent.CompletableFuture
 
 abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.message("context.actions.lesson.name")) {
   abstract val sample: LessonSample
@@ -17,10 +19,26 @@ abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.m
   abstract val intentionCaret: String
   abstract val intentionPossibleArea: String
 
-  override val testScriptProperties = TaskTestContext.TestScriptProperties(skipTesting = true)
-
   override val lessonContent: LessonContext.() -> Unit = {
     prepareSample(sample)
+
+    if (TaskTestContext.inTestMode) {
+      waitBeforeContinue(1000)
+
+      // For some reason there is no necessary hotfix in intentions, need to force IDE to update it
+      task {
+        val step = CompletableFuture<Boolean>()
+        addStep(step)
+        test {
+          type(" ")
+          invokeActionViaShortcut("BACK_SPACE")
+          invokeLater {
+            step.complete(true)
+          }
+        }
+      }
+    }
+
     lateinit var showIntentionsTaskId: TaskContext.TaskId
     task("ShowIntentionActions") {
       showIntentionsTaskId = taskId
@@ -29,6 +47,9 @@ abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.m
         item.toString().contains(warningQuickFix)
       }
       restoreIfModifiedOrMovedIncorrectly(warningPossibleArea)
+      test {
+        actions(it)
+      }
     }
 
     var before = ""
@@ -46,6 +67,11 @@ abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.m
         (insideIntention() && before != editor.document.text).also { updateBefore() }
       }
       restoreIfIntentionsPopupClosed(showIntentionsTaskId)
+      test {
+        ideFrame {
+          jListContains(warningQuickFix).item(warningQuickFix).doubleClick()
+        }
+      }
     }
 
     caret(intentionCaret)
@@ -56,6 +82,7 @@ abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.m
         item.toString().contains(intentionText)
       }
       restoreIfModifiedOrMovedIncorrectly(intentionPossibleArea)
+      test { actions(it) }
     }
 
     prepareRuntimeTask {
@@ -68,6 +95,11 @@ abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.m
         (insideIntention() && before != editor.document.text).also { updateBefore() }
       }
       restoreIfIntentionsPopupClosed(showIntentionsTaskId)
+      test {
+        ideFrame {
+          jListContains(intentionText).item(intentionText).doubleClick()
+        }
+      }
     }
 
     text(LessonsBundle.message("context.actions.refactorings.promotion",

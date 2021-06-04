@@ -95,7 +95,7 @@ public class ContainerUtilCollectionsTest extends Assert {
 
   @Test(timeout = TIMEOUT)
   public void testSoftMapTossedEvenWithIdentityStrategy() {
-    Map<Object, Object> map = CollectionFactory.createSoftIdentityMap();
+    Map<Object, Object> map = CollectionFactory.createSoftMap(HashingStrategy.identity());
     checkKeyTossedEventually(map);
   }
 
@@ -150,6 +150,7 @@ public class ContainerUtilCollectionsTest extends Assert {
     checkMapDoesntLeakOldValueAfterPutWithTheSameKeyButDifferentValue(CollectionFactory.createConcurrentSoftKeySoftValueMap(1, 1, 1));
   }
 
+  @SuppressWarnings("OverwrittenKey")
   private void checkMapDoesntLeakOldValueAfterPutWithTheSameKeyButDifferentValue(Map<Object, Object> map) {
     Object key = new Object();
     class MyValue_ {}
@@ -254,7 +255,7 @@ public class ContainerUtilCollectionsTest extends Assert {
 
   @Test(timeout = TIMEOUT)
   public void testSoftMapCustomStrategy() {
-    Map<String, String> map = ContainerUtil.createSoftMap(IGNORE_CASE_WITH_CRAZY_HASH_STRATEGY);
+    Map<String, String> map = CollectionFactory.createSoftMap(IGNORE_CASE_WITH_CRAZY_HASH_STRATEGY);
 
     map.put("ab", "ab");
     assertEquals("ab", map.get("AB"));
@@ -265,7 +266,7 @@ public class ContainerUtilCollectionsTest extends Assert {
 
   @Test(timeout = TIMEOUT)
   public void testWeakMapCustomStrategy() {
-    Map<String, String> map = ContainerUtil.createWeakMap(10, 0.5f, IGNORE_CASE_WITH_CRAZY_HASH_STRATEGY);
+    Map<String, String> map = CollectionFactory.createWeakMap(10, 0.5f, IGNORE_CASE_WITH_CRAZY_HASH_STRATEGY);
 
     String keyL = "ab";
     String keyU = StringUtil.toUpperCase(keyL);
@@ -287,7 +288,7 @@ public class ContainerUtilCollectionsTest extends Assert {
 
   @Test(timeout = TIMEOUT)
   public void testSoftNativeHashCodeDoesNotGetCalledWhenCustomStrategyIsSpecified() {
-    Map<Object, Object> map = CollectionFactory.createSoftIdentityMap();
+    Map<Object, Object> map = CollectionFactory.createSoftMap(HashingStrategy.identity());
 
     checkHashCodeDoesntCalledFor(map);
   }
@@ -572,6 +573,35 @@ public class ContainerUtilCollectionsTest extends Assert {
     assertEquals(0, set.size());
     set.add(this);
     assertEquals(1, set.size());
+  }
+
+  @Test(timeout = TIMEOUT)
+  public void testWeakKeyMapsKeySetIsIterable() {
+    checkKeySetIterable(ContainerUtil.createWeakMap());
+    checkKeySetIterable(ContainerUtil.createWeakKeySoftValueMap());
+    checkKeySetIterable(ContainerUtil.createWeakKeyWeakValueMap());
+    checkKeySetIterable(ContainerUtil.createConcurrentWeakMap());
+  }
+
+  private static void checkKeySetIterable(@NotNull Map<Object, Object> map) {
+    for (int i=0; i<10; i++) {
+      for (int k=0;k<i;k++) {
+        map.put(new Object(), new Object());
+      }
+      checkKeySetIterable(map.keySet());
+    }
+  }
+
+  private static void checkKeySetIterable(@NotNull Set<Object> set) {
+    boolean found;
+    do {
+      found = false;
+      for (Object o : set) {
+        found = true;
+        assertNotNull(o);
+      }
+      GCUtil.tryGcSoftlyReachableObjects(()->set.isEmpty());
+    } while (found);
   }
 
   @Test(timeout = TIMEOUT)

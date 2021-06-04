@@ -3,6 +3,7 @@ package com.intellij.openapi.actionSystem;
 
 import com.intellij.openapi.progress.ProgressManager;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Implement this in actions or action groups to flag that their {@link AnAction#update}, {@link ActionGroup#getChildren(AnActionEvent)}
@@ -20,5 +21,15 @@ import org.jetbrains.annotations.ApiStatus;
 public interface UpdateInBackground {
   default boolean isUpdateInBackground() {
     return true;
+  }
+
+  static boolean isUpdateInBackground(@NotNull AnAction group) {
+    return group instanceof UpdateInBackground && ((UpdateInBackground)group).isUpdateInBackground() ||
+           group.getClass() == DefaultActionGroup.class;
+  }
+
+  @ApiStatus.Experimental
+  interface Recursive extends UpdateInBackground {
+
   }
 }

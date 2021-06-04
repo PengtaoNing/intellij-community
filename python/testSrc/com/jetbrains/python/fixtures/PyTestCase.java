@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.fixtures;
 
 import com.google.common.base.Joiner;
@@ -66,16 +66,12 @@ import java.io.File;
 import java.util.*;
 import java.util.function.Consumer;
 
-/**
- * @author yole
- */
+
 @TestDataPath("$CONTENT_ROOT/../testData/")
 public abstract class PyTestCase extends UsefulTestCase {
-  public static final String PYTHON_2_MOCK_SDK = "2.7";
-  public static final String PYTHON_3_MOCK_SDK = "3.7";
 
-  protected static final PyLightProjectDescriptor ourPyDescriptor = new PyLightProjectDescriptor(PYTHON_2_MOCK_SDK);
-  protected static final PyLightProjectDescriptor ourPy3Descriptor = new PyLightProjectDescriptor(PYTHON_3_MOCK_SDK);
+  protected static final PyLightProjectDescriptor ourPy2Descriptor = new PyLightProjectDescriptor(LanguageLevel.PYTHON27);
+  protected static final PyLightProjectDescriptor ourPyLatestDescriptor = new PyLightProjectDescriptor(LanguageLevel.getLatest());
 
   protected CodeInsightTestFixture myFixture;
 
@@ -284,7 +280,7 @@ public abstract class PyTestCase extends UsefulTestCase {
 
   @Nullable
   protected LightProjectDescriptor getProjectDescriptor() {
-    return ourPyDescriptor;
+    return ourPyLatestDescriptor;
   }
 
   @Nullable
@@ -302,7 +298,7 @@ public abstract class PyTestCase extends UsefulTestCase {
     return PsiDocumentManager.getInstance(myFixture.getProject()).getDocument(myFixture.getFile()).getText().indexOf(signature);
   }
 
-  protected void setLanguageLevel(@Nullable LanguageLevel languageLevel) {
+  private void setLanguageLevel(@Nullable LanguageLevel languageLevel) {
     PythonLanguageLevelPusher.setForcedLanguageLevel(myFixture.getProject(), languageLevel);
   }
 
@@ -510,7 +506,6 @@ public abstract class PyTestCase extends UsefulTestCase {
 
   @NotNull
   protected CommonCodeStyleSettings.IndentOptions getIndentOptions() {
-    //noinspection ConstantConditions
     return getCommonCodeStyleSettings().getIndentOptions();
   }
 

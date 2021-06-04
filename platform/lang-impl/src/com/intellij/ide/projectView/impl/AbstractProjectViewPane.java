@@ -377,7 +377,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
           navigatables.add((Navigatable)node);
         }
       }
-      return navigatables.isEmpty() ? null : navigatables.toArray(new Navigatable[0]);
+      return navigatables.isEmpty() ? null : navigatables.toArray(Navigatable.EMPTY_NAVIGATABLE_ARRAY);
     }
     return null;
   }
@@ -765,7 +765,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
 
         @Override
         public boolean update(DnDEvent event) {
-          beforeDnDUpdate();
+          beforeDnDUpdate(event);
           return super.update(event);
         }
       };
@@ -776,7 +776,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
     }
   }
 
-  protected void beforeDnDUpdate() { }
+  protected void beforeDnDUpdate(DnDEvent event) { }
 
   protected void beforeDnDLeave() { }
 
@@ -836,7 +836,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
 
   private final class MyDragSource implements DnDSource {
     @Override
-    public boolean canStartDragging(DnDAction action, Point dragOrigin) {
+    public boolean canStartDragging(DnDAction action, @NotNull Point dragOrigin) {
       if ((action.getActionId() & DnDConstants.ACTION_COPY_OR_MOVE) == 0) return false;
       final Object[] elements = getSelectedElements();
       final PsiElement[] psiElements = getSelectedPSIElements();
@@ -845,7 +845,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
     }
 
     @Override
-    public DnDDragStartBean startDragging(DnDAction action, Point dragOrigin) {
+    public DnDDragStartBean startDragging(DnDAction action, @NotNull Point dragOrigin) {
       PsiElement[] psiElements = getSelectedPSIElements();
       TreePath[] paths = getSelectionPaths();
       return new DnDDragStartBean(new TransferableWrapper() {
@@ -967,6 +967,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
   @TestOnly
   @Deprecated
   @NotNull
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public Promise<TreePath> promisePathToElement(@NotNull Object element) {
     AbstractTreeBuilder builder = getTreeBuilder();
     if (builder != null) {

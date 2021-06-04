@@ -10,17 +10,15 @@ import com.intellij.internal.statistic.eventLog.validator.storage.IntellijValida
 import com.intellij.internal.statistic.eventLog.validator.storage.ValidationRulesStorageProvider;
 import com.intellij.internal.statistic.utils.PluginInfo;
 import com.intellij.internal.statistic.utils.StatisticsRecorderUtil;
+import com.intellij.internal.statistic.utils.StatisticsUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-
-import static com.intellij.internal.statistic.utils.StatisticsUtilKt.addPluginInfoTo;
 
 /**
  * <p>
@@ -143,20 +141,14 @@ public class IntellijSensitiveDataValidator extends SensitiveDataValidator<Intel
       return context.eventData;
     }
 
-    Map<String, Object> validatedData = new HashMap<>();
-    for (Map.Entry<String, Object> entry : context.eventData.entrySet()) {
-      String key = entry.getKey();
-      Object entryValue = entry.getValue();
-
-      validatedData.put(key, validateEventData(context, groupRules, key, entryValue));
-    }
+    Map<String, Object> validatedData = super.guaranteeCorrectEventData(context, groupRules);
 
     boolean containsPluginInfo = validatedData.containsKey("plugin") ||
                                  validatedData.containsKey("plugin_type") ||
                                  validatedData.containsKey("plugin_version");
     PluginInfo pluginInfo = context.getPayload(CustomValidationRule.PLUGIN_INFO);
     if (pluginInfo != null && !containsPluginInfo) {
-      addPluginInfoTo(pluginInfo, validatedData);
+      StatisticsUtil.addPluginInfoTo(pluginInfo, validatedData);
     }
     return validatedData;
   }

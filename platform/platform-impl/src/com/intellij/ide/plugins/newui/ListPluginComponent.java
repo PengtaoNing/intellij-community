@@ -20,7 +20,6 @@ import com.intellij.ui.RelativeFont;
 import com.intellij.ui.components.labels.LinkListener;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.scale.JBUIScale;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.AbstractLayoutManager;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
@@ -37,7 +36,6 @@ import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -49,11 +47,12 @@ public class ListPluginComponent extends JPanel {
   public static final Color SELECTION_COLOR = JBColor.namedColor("Plugins.lightSelectionBackground", new JBColor(0xEDF6FE, 0x464A4D));
   public static final Color HOVER_COLOR = JBColor.namedColor("Plugins.hoverBackground", new JBColor(0xEDF6FE, 0x464A4D));
 
+  private static final Ref<Boolean> HANDLE_FOCUS_ON_SELECTION = Ref.create(Boolean.TRUE);
+
   private final MyPluginModel myPluginModel;
   private final LinkListener<Object> mySearchListener;
   private final boolean myMarketplace;
   private @NotNull IdeaPluginDescriptor myPlugin;
-  private boolean myUninstalled;
   private boolean myOnlyUpdateMode;
   public IdeaPluginDescriptor myUpdateDescriptor;
 
@@ -77,9 +76,7 @@ public class ListPluginComponent extends JPanel {
   private JComponent myErrorComponent;
   private OneLineProgressIndicator myIndicator;
   private EventHandler myEventHandler;
-  protected EventHandler.SelectionType mySelection = EventHandler.SelectionType.NONE;
-
-  public static boolean HANDLE_FOCUS_ON_SELECTION = true;
+  protected @NotNull EventHandler.SelectionType mySelection = EventHandler.SelectionType.NONE;
 
   public ListPluginComponent(@NotNull MyPluginModel pluginModel,
                              @NotNull IdeaPluginDescriptor plugin,
@@ -119,21 +116,26 @@ public class ListPluginComponent extends JPanel {
     updateColors(EventHandler.SelectionType.NONE);
   }
 
-  public EventHandler.SelectionType getSelection() {
+  @NotNull EventHandler.SelectionType getSelection() {
     return mySelection;
   }
 
-  public void setSelection(@NotNull EventHandler.SelectionType type) {
+  void setSelection(@NotNull EventHandler.SelectionType type) {
     setSelection(type, type == EventHandler.SelectionType.SELECTION);
   }
 
-  public void setSelection(@NotNull EventHandler.SelectionType type, boolean scrollAndFocus) {
+  void setSelection(@NotNull EventHandler.SelectionType type, boolean scrollAndFocus) {
     mySelection = type;
 
     if (scrollAndFocus) {
-      scrollToVisible();
-      if (getParent() != null && type == EventHandler.SelectionType.SELECTION && HANDLE_FOCUS_ON_SELECTION) {
-        IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(() -> IdeFocusManager.getGlobalInstance().requestFocus(this, true));
+      JComponent parent = (JComponent)getParent();
+      if (parent != null) {
+        scrollToVisible(parent, getBounds());
+
+        if (type == EventHandler.SelectionType.SELECTION &&
+            HANDLE_FOCUS_ON_SELECTION.get()) {
+          IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(() -> IdeFocusManager.getGlobalInstance().requestFocus(this, true));
+        }
       }
     }
 
@@ -141,13 +143,18 @@ public class ListPluginComponent extends JPanel {
     repaint();
   }
 
-  public void scrollToVisible() {
-    JComponent parent = (JComponent)getParent();
-    if (parent == null) {
-      return;
+  void onSelection(@NotNull Runnable runnable) {
+    try {
+      HANDLE_FOCUS_ON_SELECTION.set(Boolean.FALSE);
+      runnable.run();
     }
+    finally {
+      HANDLE_FOCUS_ON_SELECTION.set(Boolean.TRUE);
+    }
+  }
 
-    Rectangle bounds = getBounds();
+  private static void scrollToVisible(@NotNull JComponent parent,
+                                      @NotNull Rectangle bounds) {
     if (!parent.getVisibleRect().contains(bounds)) {
       parent.scrollRectToVisible(bounds);
     }
@@ -193,10 +200,8 @@ public class ListPluginComponent extends JPanel {
           }
           else {
             myEnableDisableButton = createEnableDisableButton(
-              __ -> myPluginModel.changeEnableDisable(
-                Set.of(myPlugin),
-                PluginEnableDisableAction.globally(myPluginModel.getState(myPlugin).isDisabled())
-              )
+              __ -> myPluginModel.setEnabledState(List.of(myPlugin),
+                                                  PluginEnableDisableAction.globally(myPluginModel.getState(myPlugin).isDisabled()))
             );
           }
 
@@ -271,8 +276,7 @@ public class ListPluginComponent extends JPanel {
       }
     }
     else {
-      String version =
-        !myPlugin.isBundled() || myPlugin.allowBundledUpdate() ? myPlugin.getVersion() : IdeBundle.message("plugin.status.bundled");
+      String version = myPlugin.isBundled() ? IdeBundle.message("plugin.status.bundled") : myPlugin.getVersion();
 
       if (!StringUtil.isEmptyOrSpaces(version)) {
         myVersion = createRatingLabel(myMetricsPanel, version, null);
@@ -286,29 +290,18 @@ public class ListPluginComponent extends JPanel {
   }
 
   private void createTag() {
-    String tag = null;
-
-    if (myPlugin.getProductCode() == null) {
-      if (myMarketplace && !LicensePanel.isEA2Product(myPlugin.getPluginId().getIdString())) {
-        List<String> tags = ((PluginNode)myPlugin).getTags();
-        if (tags != null && tags.contains(Tags.Paid.name())) {
-          tag = Tags.Paid.name(); //NON-NLS
-        }
-      }
+    List<String> tags = PluginManagerConfigurable.getTags(myPlugin);
+    if (!tags.isEmpty()) {
+      TagComponent tagComponent = createTagComponent(tags.get(0));
+      myLayout.setTagComponent(PluginManagerConfigurable.setTinyFont(tagComponent));
     }
-    else {
-      tag = ContainerUtil.getFirstItem(PluginManagerConfigurable.getTags(myPlugin));
-    }
+  }
 
-    if (tag == null) {
-      return;
-    }
-
+  private @NotNull TagComponent createTagComponent(@Nls @NotNull String tag) {
     TagComponent component = new TagComponent(tag);
     //noinspection unchecked
     component.setListener(mySearchListener, component);
-
-    myLayout.setTagComponent(PluginManagerConfigurable.setTinyFont(component));
+    return component;
   }
 
   private void setTagTooltip(@Nullable @Nls String text) {
@@ -802,13 +795,11 @@ public class ListPluginComponent extends JPanel {
                                null;
 
       if (action != null) {
-        ActionManager.getInstance().tryToExecute(
-          action,
-          event,
-          this,
-          ActionPlaces.UNKNOWN,
-          true
-        );
+        ActionManager.getInstance().tryToExecute(action,
+                                                 event,
+                                                 this,
+                                                 ActionPlaces.UNKNOWN,
+                                                 true);
       }
     }
   }
@@ -852,8 +843,7 @@ public class ListPluginComponent extends JPanel {
                                                                      ListPluginComponent::getPluginDescriptor);
   }
 
-  private SelectionBasedPluginModelAction.@NotNull UninstallAction<ListPluginComponent> createUninstallAction(@NotNull List<ListPluginComponent> selection) {
-
+  private @NotNull SelectionBasedPluginModelAction.UninstallAction<ListPluginComponent> createUninstallAction(@NotNull List<ListPluginComponent> selection) {
     return new SelectionBasedPluginModelAction.UninstallAction<>(myPluginModel,
                                                                  true,
                                                                  this,

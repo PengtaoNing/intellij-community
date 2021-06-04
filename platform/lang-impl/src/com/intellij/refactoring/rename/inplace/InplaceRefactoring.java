@@ -306,7 +306,7 @@ public abstract class InplaceRefactoring {
     boolean subrefOnPrimaryElement = false;
     boolean hasReferenceOnNameIdentifier = false;
     for (PsiReference ref : refs) {
-      if (isReferenceAtCaret(selectedElement, ref)) {
+      if (isReferenceAtCaret(selectedElement, ref, offset)) {
         Expression expression = createTemplateExpression(selectedElement);
         builder.replaceElement(ref.getElement(), getRangeToRename(ref), PRIMARY_VARIABLE_NAME, expression,
                                shouldStopAtLookupExpression(expression));
@@ -371,12 +371,20 @@ public abstract class InplaceRefactoring {
     return expression instanceof MyLookupExpression;
   }
 
+  /**
+   * Checks if selected element contains reference range and covers current offset as well
+   */
+  protected boolean isReferenceAtCaret(PsiElement selectedElement, PsiReference ref, int offset) {
+    return isReferenceAtCaret(selectedElement, ref) && 
+           checkRangeContainsOffset(offset, ref.getRangeInElement(), ref.getElement());
+  }
+
   protected boolean isReferenceAtCaret(PsiElement selectedElement, PsiReference ref) {
     final TextRange textRange = ref.getRangeInElement().shiftRight(ref.getElement().getTextRange().getStartOffset());
     if (selectedElement != null){
       final TextRange selectedElementRange = selectedElement.getTextRange();
       LOG.assertTrue(selectedElementRange != null, selectedElement);
-      if (selectedElementRange != null && selectedElementRange.contains(textRange)) return true;
+      if (selectedElementRange.contains(textRange)) return true;
     }
     return false;
   }
@@ -431,7 +439,8 @@ public abstract class InplaceRefactoring {
         variableHighlights(template, templateState).forEach((range, attributesKey) -> {
           TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(attributesKey);
           if (attributes != null) {
-            rangesToHighlight.put(range, attributes);
+            TextAttributesWithKey attributesWithKey = new TextAttributesWithKey(attributes, attributesKey);
+            rangesToHighlight.put(range, attributesWithKey);
           }
         });
       }
@@ -726,7 +735,12 @@ public abstract class InplaceRefactoring {
     for (Map.Entry<TextRange, TextAttributes> entry : ranges.entrySet()) {
       TextRange range = entry.getKey();
       TextAttributes attributes = entry.getValue();
-      highlightManager.addOccurrenceHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributes, 0, highlighters, null);
+      if (attributes instanceof TextAttributesWithKey) {
+        TextAttributesKey attributesKey = ((TextAttributesWithKey)attributes).getTextAttributesKey();
+        highlightManager.addOccurrenceHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributesKey, 0, highlighters);
+      } else {
+        highlightManager.addOccurrenceHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributes, 0, highlighters, null);
+      }
     }
 
     for (RangeHighlighter highlighter : highlighters) {
@@ -954,6 +968,19 @@ public abstract class InplaceRefactoring {
       String enterShortcut = KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CHOOSE_LOOKUP_ITEM);
       String tabShortcut = KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CHOOSE_LOOKUP_ITEM_REPLACE);
       setAdvertisementText(LangBundle.message("popup.advertisement.press.or.to.replace", enterShortcut, tabShortcut));
+    }
+  }
+
+  private static class TextAttributesWithKey extends TextAttributes {
+    private final @NotNull TextAttributesKey myTextAttributesKey;
+
+    TextAttributesWithKey(@NotNull TextAttributes textAttributes, @NotNull TextAttributesKey textAttributesKey) {
+      myTextAttributesKey = textAttributesKey;
+      copyFrom(textAttributes);
+    }
+
+    @NotNull TextAttributesKey getTextAttributesKey() {
+      return myTextAttributesKey;
     }
   }
 

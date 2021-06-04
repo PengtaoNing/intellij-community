@@ -4,6 +4,7 @@ package com.intellij.openapi.application.ex;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.util.BuildNumber;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,18 +26,21 @@ public abstract class ApplicationInfoEx extends ApplicationInfo {
    * @deprecated use {@link #getApplicationSvgIconUrl()} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public abstract String getIconUrl();
 
   /**
    * @deprecated use {@link #getSmallApplicationSvgIconUrl()} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public abstract @NotNull String getSmallIconUrl();
 
   /**
    * @deprecated use {@link #getApplicationSvgIconUrl()} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public abstract @Nullable String getBigIconUrl();
 
   /**
@@ -100,6 +104,10 @@ public abstract class ApplicationInfoEx extends ApplicationInfo {
 
   public abstract String getWhatsNewUrl();
 
+  public static final int WHATS_NEW_EMBED = 1;
+  public static final int WHATS_NEW_AUTO = 2;
+  public abstract boolean isWhatsNewEligibleFor(int role);
+
   public abstract String getWinKeymapUrl();
 
   public abstract String getMacKeymapUrl();
@@ -120,9 +128,7 @@ public abstract class ApplicationInfoEx extends ApplicationInfo {
 
   public abstract boolean isEssentialPlugin(@NotNull PluginId pluginId);
 
-  public abstract @Nullable String getCustomizeIDEWizardDialog();
-
-  public abstract @Nullable String getCustomizeIDEWizardStepsProvider();
+  public abstract @Nullable String getWelcomeWizardDialog();
 
   public abstract int @Nullable [] getAboutLogoRect();
 

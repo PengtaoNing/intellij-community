@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.ui;
 
-import com.intellij.openapi.options.CompositeSettingsBuilder;
 import com.intellij.openapi.options.CompositeSettingsEditor;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.util.NotNullLazyValue;
@@ -71,8 +70,8 @@ public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettin
   }
 
   @Override
-  public @NotNull CompositeSettingsBuilder<Settings> getBuilder() {
-    return new FragmentedSettingsBuilder<>(getFragments(), null);
+  public @NotNull FragmentedSettingsBuilder<Settings> getBuilder() {
+    return new FragmentedSettingsBuilder<>(getFragments(), null, this);
   }
 
   @Override

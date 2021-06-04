@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.impl;
 
 import com.intellij.codeInsight.hint.HintManager;
@@ -51,7 +51,6 @@ import com.intellij.ui.*;
 import com.intellij.ui.components.JBPanelWithEmptyText;
 import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.ui.mac.TouchbarDataKeys;
-import com.intellij.ui.mac.UpdatableDefaultActionGroup;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
@@ -64,9 +63,10 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+
+import static com.intellij.diff.tools.util.base.TextDiffViewerUtil.recursiveRegisterShortcutSet;
 
 public abstract class DiffRequestProcessor implements Disposable {
   private static final Logger LOG = Logger.getInstance(DiffRequestProcessor.class);
@@ -83,7 +83,7 @@ public abstract class DiffRequestProcessor implements Disposable {
 
   @NotNull private final DefaultActionGroup myToolbarGroup;
   @NotNull private final DefaultActionGroup myPopupActionGroup;
-  @NotNull private final UpdatableDefaultActionGroup myTouchbarActionGroup;
+  @NotNull private final DefaultActionGroup myTouchbarActionGroup;
 
   @NotNull private final JPanel myPanel;
   @NotNull private final MyPanel myMainPanel;
@@ -124,8 +124,7 @@ public abstract class DiffRequestProcessor implements Disposable {
 
     myToolbarGroup = new DefaultActionGroup();
     myPopupActionGroup = new DefaultActionGroup();
-    myTouchbarActionGroup = new UpdatableDefaultActionGroup();
-    TouchbarDataKeys.putActionDescriptor(myTouchbarActionGroup).setReplaceEsc(false);
+    myTouchbarActionGroup = new DefaultActionGroup();
 
     // UI
 
@@ -384,16 +383,21 @@ public abstract class DiffRequestProcessor implements Disposable {
 
   @NotNull
   protected List<AnAction> getNavigationActions() {
-    return Arrays.asList(new MyPrevDifferenceAction(), new MyNextDifferenceAction(), new MyOpenInEditorAction(), Separator.getInstance(),
-                         new MyPrevChangeAction(), new MyNextChangeAction());
+    List<AnAction> actions = ContainerUtil.newArrayList(
+      new MyPrevDifferenceAction(), new MyNextDifferenceAction(), new MyOpenInEditorAction(),
+      Separator.getInstance(),
+      new MyPrevChangeAction(), new MyNextChangeAction());
+
+    ContainerUtil.addIfNotNull(actions, createGoToChangeAction());
+
+    return actions;
   }
 
-  @NotNull
-  private List<AnAction> getTouchbarActions() {
-    final DefaultActionGroup left = new DefaultActionGroup(new MyPrevDifferenceAction(), new MyNextDifferenceAction());
-    final DefaultActionGroup main = new DefaultActionGroup(new MyPrevChangeAction(), new MyNextChangeAction());
-    TouchbarDataKeys.putActionDescriptor(main).setShowText(true).setShowImage(false).setMainGroup(true);
-    return Arrays.asList(left, main);
+  /**
+   * @see com.intellij.openapi.vcs.changes.actions.diff.ChangeGoToChangePopupAction
+   */
+  protected @Nullable AnAction createGoToChangeAction() {
+    return null;
   }
 
   //
@@ -463,6 +467,8 @@ public abstract class DiffRequestProcessor implements Disposable {
     });
   }
 
+  private static final boolean SHOW_VIEWER_ACTIONS_IN_TOUCHBAR = Boolean.getBoolean("touchbar.diff.show.viewer.actions");
+
   protected void collectToolbarActions(@Nullable List<? extends AnAction> viewerActions) {
     myToolbarGroup.removeAll();
 
@@ -483,7 +489,15 @@ public abstract class DiffRequestProcessor implements Disposable {
                             new ShowInExternalToolAction(),
                             ActionManager.getInstance().getAction(IdeActions.ACTION_CONTEXT_HELP));
 
-    myTouchbarActionGroup.replaceAll(getTouchbarActions());
+    if (SystemInfo.isMac) { // collect touchbar actions
+      myTouchbarActionGroup.removeAll();
+      myTouchbarActionGroup.addAll(
+        new MyPrevDifferenceAction(), new MyNextDifferenceAction(), new MyOpenInEditorAction(), Separator.getInstance(),
+        new MyPrevChangeAction(), new MyNextChangeAction()
+      );
+      if (SHOW_VIEWER_ACTIONS_IN_TOUCHBAR && viewerActions != null)
+        myTouchbarActionGroup.addAll(viewerActions);
+    }
   }
 
   protected void collectPopupActions(@Nullable List<? extends AnAction> viewerActions) {
@@ -506,7 +520,7 @@ public abstract class DiffRequestProcessor implements Disposable {
     ((ActionToolbarImpl)myToolbar).clearPresentationCache();
     myToolbar.updateActionsImmediately();
 
-    ActionUtil.recursiveRegisterShortcutSet(myToolbarGroup, myMainPanel, null);
+    recursiveRegisterShortcutSet(myToolbarGroup, myMainPanel, null);
   }
 
   @NotNull

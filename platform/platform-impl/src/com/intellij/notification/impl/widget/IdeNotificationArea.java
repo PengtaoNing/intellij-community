@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.notification.impl.widget;
 
 import com.intellij.icons.AllIcons;
@@ -8,6 +8,7 @@ import com.intellij.notification.LogModel;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.impl.ui.NotificationsUtil;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.CustomStatusBarWidget;
@@ -23,13 +24,12 @@ import sun.swing.SwingUtilities2;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
 import java.util.List;
 
 public class IdeNotificationArea extends JLabel implements CustomStatusBarWidget, IconLikeCustomStatusBarWidget {
   public static final String WIDGET_ID = "Notifications";
-  @Nullable
-  private StatusBar myStatusBar;
+
+  private @Nullable StatusBar myStatusBar;
 
   public IdeNotificationArea() {
     setBorder(WidgetBorder.ICON);
@@ -60,15 +60,15 @@ public class IdeNotificationArea extends JLabel implements CustomStatusBarWidget
           return true;
         }
       }.installOn(this, true);
-      ApplicationManager.getApplication().getMessageBus().connect(this).subscribe(LogModel.LOG_MODEL_CHANGED, () ->
-        ApplicationManager.getApplication().invokeLater(() -> updateStatus(project)));
+
+      Application app = ApplicationManager.getApplication();
+      app.getMessageBus().connect(this).subscribe(LogModel.LOG_MODEL_CHANGED, () -> app.invokeLater(() -> updateStatus(project)));
       updateStatus(project);
     }
   }
 
   @Override
-  @NotNull
-  public String ID() {
+  public @NotNull String ID() {
     return WIDGET_ID;
   }
 
@@ -76,7 +76,7 @@ public class IdeNotificationArea extends JLabel implements CustomStatusBarWidget
     if (project == null || project.isDisposed()) {
       return;
     }
-    ArrayList<Notification> notifications = EventLog.getLogModel(project).getNotifications();
+    List<Notification> notifications = EventLog.getLogModel(project).getNotifications();
     updateIconOnStatusBar(notifications);
 
     int count = notifications.size();
@@ -85,16 +85,10 @@ public class IdeNotificationArea extends JLabel implements CustomStatusBarWidget
   }
 
   private void updateIconOnStatusBar(List<? extends Notification> notifications) {
-    setIcon(createIconWithNotificationCount(notifications));
+    setIcon(createIconWithNotificationCount(this, NotificationType.getDominatingType(notifications), notifications.size(), false));
   }
 
-  @NotNull
-  private LayeredIcon createIconWithNotificationCount(List<? extends Notification> notifications) {
-    return createIconWithNotificationCount(this, getMaximumType(notifications), notifications.size(), false);
-  }
-
-  @NotNull
-  public static LayeredIcon createIconWithNotificationCount(JComponent component, NotificationType type, int size, boolean forToolWindow) {
+  public static @NotNull LayeredIcon createIconWithNotificationCount(JComponent component, NotificationType type, int size, boolean forToolWindow) {
     LayeredIcon icon = new LayeredIcon(2);
     Icon baseIcon = getPendingNotificationsIcon(type, forToolWindow);
     icon.setIcon(baseIcon, 0);
@@ -126,26 +120,6 @@ public class IdeNotificationArea extends JLabel implements CustomStatusBarWidget
       }
     }
     return forToolWindow ? AllIcons.Toolwindows.NoEvents : AllIcons.Ide.Notification.NoEvents;
-  }
-
-  @Nullable
-  public static NotificationType getMaximumType(List<? extends Notification> notifications) {
-    NotificationType result = null;
-    for (Notification notification : notifications) {
-      NotificationType type = notification.getType();
-      if (NotificationType.ERROR == type) {
-        return NotificationType.ERROR;
-      }
-
-      if (NotificationType.WARNING == type) {
-        result = NotificationType.WARNING;
-      }
-      else if (result == null && (NotificationType.INFORMATION == type || NotificationType.IDE_UPDATE == type)) {
-        result = NotificationType.INFORMATION;
-      }
-    }
-
-    return result;
   }
 
   private static class TextIcon implements Icon {

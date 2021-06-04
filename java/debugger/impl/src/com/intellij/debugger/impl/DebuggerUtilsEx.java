@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * Class DebuggerUtilsEx
@@ -933,7 +933,7 @@ public abstract class DebuggerUtilsEx extends DebuggerUtils {
     PsiFile file = position.getFile();
     final int line = position.getLine();
     final Document document = PsiDocumentManager.getInstance(file.getProject()).getDocument(file);
-    if (document == null || line >= document.getLineCount()) {
+    if (document == null || line < 0 || line >= document.getLineCount()) {
       return Collections.emptyList();
     }
     TextRange lineRange = DocumentUtil.getLineTextRange(document, line);
@@ -1087,7 +1087,7 @@ public abstract class DebuggerUtilsEx extends DebuggerUtils {
 
   public static void enableCollection(ObjectReference reference) {
     if (reference instanceof ObjectReferenceImpl) {
-      ((ObjectReferenceImpl)reference).enableCollection(false);
+      ((ObjectReferenceImpl)reference).enableCollectionAsync();
     }
     else {
       try {

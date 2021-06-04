@@ -41,7 +41,7 @@ import java.util.concurrent.Future;
  * "read actions" and "write actions" via {@link #runReadAction} and {@link #runWriteAction}, respectively.
  * <p>
  * The recommended way to obtain Write Intent lock is to schedule execution on so-called "write thread" (i.e. thread with Write Intent lock)
- * via {@link #invokeLaterOnWriteThread}, {@link WriteThread} or {@link AppUIExecutor#onWriteThread} asynchronous API.
+ * via {@link #invokeLaterOnWriteThread} or {@link AppUIExecutor#onWriteThread} asynchronous API.
  * <p>
  * Multiple read actions can run at the same time without locking each other.
  * <p>
@@ -169,6 +169,12 @@ public interface Application extends ComponentManager {
    * Asserts whether the write access is allowed.
    */
   void assertWriteAccessAllowed();
+
+  /**
+   * Asserts whether the read access is not allowed.
+   */
+  @ApiStatus.Experimental
+  void assertReadAccessNotAllowed();
 
   /**
    * Asserts whether the method is being called from the event dispatch thread.

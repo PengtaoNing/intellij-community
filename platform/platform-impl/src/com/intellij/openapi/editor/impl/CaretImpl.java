@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.diagnostic.AttachmentFactory;
@@ -237,7 +237,7 @@ public class CaretImpl extends UserDataHolderBase implements Caret, Dumpable {
         if (!editorSettings.isCaretInsideTabs()) {
           CharSequence text = document.getCharsSequence();
           if (offset >= 0 && offset < document.getTextLength()) {
-            if (text.charAt(offset) == '\t' && (columnShift <= 0 || offset == oldOffset)) {
+            if (text.charAt(offset) == '\t' && (columnShift <= 0 || offset == oldOffset) && !isAtRtlLocation()) {
               if (columnShift <= 0) {
                 newColumnNumber = myEditor.offsetToVisualPosition(offset, true, false).column;
               }
@@ -1249,7 +1249,7 @@ public class CaretImpl extends UserDataHolderBase implements Caret, Dumpable {
   @Override
   public void selectLineAtCaret() {
     validateContext(true);
-    myCaretModel.doWithCaretMerging(() -> SelectionModelImpl.doSelectLineAtCaret(this));
+    myCaretModel.doWithCaretMerging(() -> EditorActionUtil.selectEntireLines(this, true));
   }
 
   @Override
@@ -1534,7 +1534,7 @@ public class CaretImpl extends UserDataHolderBase implements Caret, Dumpable {
         int newOffset = Math.min(intervalStart(), e.getOffset() + e.getNewLength());
         if (!e.getDocument().isInBulkUpdate() && e.isWholeTextReplaced()) {
           try {
-            final int line = ((DocumentEventImpl)e).translateLineViaDiff(myLogicalCaret.line);
+            int line = ((DocumentEventImpl)e).translateLineViaDiff(myLogicalCaret.line);
             newOffset = myEditor.logicalPositionToOffset(new LogicalPosition(line, myLogicalCaret.column));
           }
           catch (FilesTooBigForDiffException ex) {

@@ -91,7 +91,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
             group.setExpanded(true);
             ListModel model = ((NameFilteringListModel)list.getModel()).getOriginalModel();
             int index = list.getSelectedIndex();
-            RecentProjectsWelcomeScreenActionBase.rebuildRecentProjectDataModel((DefaultListModel)model);
+            RecentProjectsWelcomeScreenActionBase.rebuildRecentProjectDataModel(model);
             list.setSelectedIndex(group.getProjects().isEmpty() ? index : index + 1);
           }
         } else {
@@ -121,7 +121,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
           group.setExpanded(false);
           int index = list.getSelectedIndex();
           ListModel model = ((NameFilteringListModel)list.getModel()).getOriginalModel();
-          RecentProjectsWelcomeScreenActionBase.rebuildRecentProjectDataModel((DefaultListModel)model);
+          RecentProjectsWelcomeScreenActionBase.rebuildRecentProjectDataModel(model);
           list.setSelectedIndex(index);
         }
       }
@@ -236,7 +236,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
               add(name);
             } else if (value instanceof ReopenProjectAction) {
               final NonOpaquePanel p = new NonOpaquePanel(new BorderLayout());
-              name.setText(((ReopenProjectAction)value).getProjectName());
+              name.setText(((ReopenProjectAction)value).getProjectNameToDisplay());
               final String realPath = PathUtil.toSystemDependentName(((ReopenProjectAction)value).getProjectPath());
               int i = isInsideGroup ? 80 : 60;
               path.setText(getTitle2Text((ReopenProjectAction)value, path, JBUIScale.scale(i)));

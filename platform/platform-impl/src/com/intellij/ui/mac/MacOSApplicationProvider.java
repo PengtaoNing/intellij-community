@@ -1,9 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.mac;
 
-import com.apple.eawt.AppEvent;
-import com.apple.eawt.Application;
-import com.apple.eawt.OpenURIHandler;
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.ide.CommandLineProcessor;
 import com.intellij.ide.CommandLineProcessorResult;
@@ -36,6 +33,8 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.desktop.OpenURIEvent;
+import java.awt.desktop.OpenURIHandler;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.nio.file.Path;
@@ -67,22 +66,22 @@ public final class MacOSApplicationProvider {
     @SuppressWarnings({"FieldCanBeLocal", "unused"}) private static Object UPDATE_CALLBACK_REF;
 
     static void initMacApplication() {
-      Application application = Application.getApplication();
+      Desktop desktop = Desktop.getDesktop();
 
-      application.setAboutHandler(event -> {
+      desktop.setAboutHandler(event -> {
         if (LoadingState.COMPONENTS_LOADED.isOccurred()) {
           AboutAction.perform(getProject(false));
         }
       });
 
-      application.setPreferencesHandler(event -> {
+      desktop.setPreferencesHandler(event -> {
         if (LoadingState.COMPONENTS_LOADED.isOccurred()) {
           Project project = Objects.requireNonNull(getProject(true));
           submit("Preferences", () -> ShowSettingsAction.perform(project));
         }
       });
 
-      application.setQuitHandler((event, response) -> {
+      desktop.setQuitHandler((event, response) -> {
         if (LoadingState.COMPONENTS_LOADED.isOccurred()) {
           submit("Quit", () -> ApplicationManager.getApplication().exit());
           response.cancelQuit();
@@ -92,7 +91,7 @@ public final class MacOSApplicationProvider {
         }
       });
 
-      application.setOpenFileHandler(event -> {
+      desktop.setOpenFileHandler(event -> {
         List<File> files = event.getFiles();
         if (files.isEmpty()) {
           return;
@@ -202,9 +201,9 @@ public final class MacOSApplicationProvider {
         return;
       }
 
-      Application.getApplication().setOpenURIHandler(new OpenURIHandler() {
+      Desktop.getDesktop().setOpenURIHandler(new OpenURIHandler() {
         @Override
-        public void openURI(AppEvent.OpenURIEvent event) {
+        public void openURI(OpenURIEvent event) {
           Map<String, List<String>> parameters = new QueryStringDecoder(event.getURI()).parameters();
           String file = ContainerUtil.getFirstItem(parameters.get("file"));
           if (file == null) {

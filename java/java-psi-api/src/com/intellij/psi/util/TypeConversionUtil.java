@@ -255,11 +255,13 @@ public final class TypeConversionUtil {
     final LanguageLevel languageLevel = toClassType.getLanguageLevel();
     //  jep-397
     if (languageLevel.isAtLeast(LanguageLevel.JDK_16_PREVIEW)) {
-      if (fromClass.hasModifierProperty(PsiModifier.SEALED)) {
-        if (!canConvertSealedTo(fromClass, toClass)) return false;
-      }
-      else if (toClass.hasModifierProperty(PsiModifier.SEALED)) {
-        if (!canConvertSealedTo(toClass, fromClass)) return false;
+      if (fromClass.isInterface() || toClass.isInterface()) {
+        if (fromClass.hasModifierProperty(PsiModifier.SEALED)) {
+          if (!canConvertSealedTo(fromClass, toClass)) return false;
+        }
+        else if (toClass.hasModifierProperty(PsiModifier.SEALED)) {
+          if (!canConvertSealedTo(toClass, fromClass)) return false;
+        }
       }
     }
     if (!fromClass.isInterface()) {
@@ -353,7 +355,7 @@ public final class TypeConversionUtil {
    * <p>See JEP-397 for more details.</p>
    */
   public static boolean canConvertSealedTo(@NotNull PsiClass sealedClass, @NotNull PsiClass psiClass) {
-    if (!sealedClass.isInterface() && !psiClass.isInterface()) return true;
+    LOG.assertTrue(sealedClass.isInterface() || psiClass.isInterface());
     return canConvertSealedTo(sealedClass, psiClass, new HashSet<>());
   }
   
@@ -404,8 +406,10 @@ public final class TypeConversionUtil {
                                               @NotNull PsiClass psiClass,
                                               @NotNull List<PsiClass> sealedClasses) {
     if (subClass == null) return false;
-    if (subClass.hasModifierProperty(PsiModifier.NON_SEALED) || subClass.isInheritor(psiClass, true)) return true;
-    if (subClass.hasModifierProperty(PsiModifier.SEALED)) sealedClasses.add(subClass);
+    if (subClass.hasModifierProperty(PsiModifier.NON_SEALED) || InheritanceUtil.isInheritorOrSelf(subClass, psiClass, true)) return true;
+    if (subClass.hasModifierProperty(PsiModifier.SEALED)) {
+      sealedClasses.add(subClass);
+    }
     return false;
   }
 

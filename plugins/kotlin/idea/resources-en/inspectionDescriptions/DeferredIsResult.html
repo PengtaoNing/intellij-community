@@ -1,0 +1,8 @@
+<html>
+<body>
+Reports functions with <code>kotlinx.coroutines.Deferred</code> result.
+
+Functions which use <code>Deferred</code> as return type should have a name with suffix <code>Async</code>.
+Otherwise, it's recommended to turn a function into a suspend function and unwrap <code>Deferred</code>.
+</body>
+</html>

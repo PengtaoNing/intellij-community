@@ -148,9 +148,7 @@ data class ClientId(val value: String) {
             val clientIdService = ClientIdService.tryGetInstance() ?: return action()
 
             if (!clientIdService.isValid(clientId)) {
-                val pce = ProcessCanceledException()
-                Logger.getInstance(ClientId::class.java).debug("Invalid clientId: $clientId. Skipping execution", pce)
-                throw pce
+                Logger.getInstance(ClientId::class.java).warn("Invalid clientId: $clientId", Throwable())
             }
 
             val foreignMainThreadActivity = clientIdService.checkLongActivity &&
@@ -163,7 +161,7 @@ data class ClientId(val value: String) {
                     val beforeActionTime = System.currentTimeMillis()
                     val result = action()
                     val delta = System.currentTimeMillis() - beforeActionTime
-                    if (delta > 300) {
+                    if (delta > 1000) {
                         Logger.getInstance(ClientId::class.java).warn("LONG MAIN THREAD ACTIVITY by ${clientId?.value}. Stack trace:\n${getStackTrace()}")
                     }
                     return result
@@ -172,6 +170,17 @@ data class ClientId(val value: String) {
             } finally {
                 clientIdService.clientIdValue = old
             }
+        }
+
+        @JvmStatic
+        fun <T> decorateFunction(action: () -> T): () -> T {
+          if (propagateAcrossThreads) return action
+          val currentId = currentOrNull
+          return {
+            withClientId(currentId) {
+              return@withClientId action()
+            }
+          }
         }
 
         @JvmStatic
@@ -231,6 +240,10 @@ data class ClientId(val value: String) {
 
 fun isForeignClientOnServer(): Boolean {
     return !ClientId.isCurrentlyUnderLocalId && ClientId.localId == ClientId.defaultLocalId
+}
+
+fun isOnGuest(): Boolean {
+    return ClientId.localId != ClientId.defaultLocalId
 }
 
 fun getStackTrace(): String {

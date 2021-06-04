@@ -708,14 +708,21 @@ public class ModuleStructureConfigurable extends BaseStructureConfigurable imple
     @NotNull
     @Override
     public String getDisplayName() {
+      List<String> parentGroupPath;
       if (parent instanceof ModuleGroupNode) {
         ModuleGroup parentGroup = ((ModuleGroupNode)parent).getModuleGroup();
-        List<String> groupPath = myModuleGroup.getGroupPathList();
-        if (parentGroup != null && ContainerUtil.startsWith(groupPath, parentGroup.getGroupPathList())) {
-          return StringUtil.join(groupPath.subList(parentGroup.getGroupPathList().size(), groupPath.size()), ".");
-        }
+        parentGroupPath = parentGroup != null ? parentGroup.getGroupPathList() : Collections.emptyList();
       }
-      return super.getDisplayName();
+      else {
+        parentGroupPath = Collections.emptyList();
+      }
+      List<String> groupPath = myModuleGroup.getGroupPathList();
+      if (ContainerUtil.startsWith(groupPath, parentGroupPath)) {
+        return StringUtil.join(groupPath.subList(parentGroupPath.size(), groupPath.size()), ".");
+      }
+      else {
+        return StringUtil.join(groupPath, ".");
+      }
     }
 
     @Override
@@ -748,13 +755,17 @@ public class ModuleStructureConfigurable extends BaseStructureConfigurable imple
     @Override
     public boolean remove(@NotNull Collection<? extends Module> modules) {
       ModulesConfigurator modulesConfigurator = myContext.myModulesConfigurator;
-      List<Module> deleted = modulesConfigurator.deleteModules(modules);
-      if (deleted.isEmpty()) {
-        return false;
-      }
-      for (Module module : deleted) {
+      List<ModuleEditor> moduleEditors = ContainerUtil.mapNotNull(modules, modulesConfigurator::getModuleEditor);
+      if (moduleEditors.isEmpty()) return false;
+      if (!modulesConfigurator.canDeleteModules(moduleEditors)) return false;
+
+      List<Module> modulesToDelete = ContainerUtil.mapNotNull(moduleEditors, ModuleEditor::getModule);
+      for (Module module : modulesToDelete) {
         List<Facet> removed = modulesConfigurator.getFacetsConfigurator().removeAllFacets(module);
         myProjectStructureConfigurable.getFacetStructureConfigurable().removeFacetNodes(removed);
+      }
+      modulesConfigurator.deleteModules(moduleEditors);
+      for (Module module : modulesToDelete) {
         myContext.getDaemonAnalyzer().removeElement(new ModuleProjectStructureElement(myContext, module));
 
         for (final ModuleStructureExtension extension : ModuleStructureExtension.EP_NAME.getExtensions()) {

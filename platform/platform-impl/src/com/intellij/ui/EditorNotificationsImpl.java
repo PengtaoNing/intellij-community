@@ -6,10 +6,10 @@ import com.intellij.internal.statistic.eventLog.FeatureUsageData;
 import com.intellij.internal.statistic.service.fus.collectors.FUCounterUsageLogger;
 import com.intellij.internal.statistic.utils.PluginInfo;
 import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.impl.NonBlockingReadActionImpl;
+import com.intellij.openapi.editor.EditorActivityManager;
 import com.intellij.openapi.extensions.ExtensionPointListener;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.extensions.ProjectExtensionPointName;
@@ -17,6 +17,7 @@ import com.intellij.openapi.fileEditor.*;
 import com.intellij.openapi.fileEditor.impl.text.AsyncEditorLoader;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.AdditionalLibraryRootsListener;
 import com.intellij.openapi.roots.ModuleRootEvent;
 import com.intellij.openapi.roots.ModuleRootListener;
 import com.intellij.openapi.util.Key;
@@ -39,7 +40,6 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 
 public final class EditorNotificationsImpl extends EditorNotifications {
@@ -87,6 +87,7 @@ public final class EditorNotificationsImpl extends EditorNotifications {
         updateAllNotifications();
       }
     });
+    connection.subscribe(AdditionalLibraryRootsListener.TOPIC, ((presentableLibraryName, oldRoots, newRoots, libraryNameForDebug) -> updateAllNotifications()));
 
     EP_PROJECT.getPoint(project).addExtensionPointListener(
       new ExtensionPointListener<>() {
@@ -105,7 +106,7 @@ public final class EditorNotificationsImpl extends EditorNotifications {
   @Override
   public void updateNotifications(@NotNull Provider<?> provider) {
     Key<? extends JComponent> key = provider.getKey();
-    for (VirtualFile file : FileEditorManager.getInstance(myProject).getOpenFiles()) {
+    for (VirtualFile file : FileEditorManager.getInstance(myProject).getOpenFilesWithRemotes()) {
       List<FileEditor> editors = getEditors(file);
 
       for (FileEditor editor : editors) {
@@ -121,18 +122,14 @@ public final class EditorNotificationsImpl extends EditorNotifications {
         return;
       }
 
-      List<FileEditor> editors = getEditors(file);
-
-      if (!ApplicationManager.getApplication().isHeadlessEnvironment()) {
-        Iterator<FileEditor> it = editors.iterator();
-        while (it.hasNext()) {
-          FileEditor e = it.next();
-          if (!e.getComponent().isShowing()) {
-            e.putUserData(PENDING_UPDATE, Boolean.TRUE);
-            it.remove();
-          }
+      List<FileEditor> editors = ContainerUtil.filter(getEditors(file), fileEditor -> {
+        boolean visible = EditorActivityManager.getInstance().isVisible(fileEditor);
+        if (!visible) {
+          fileEditor.putUserData(PENDING_UPDATE, Boolean.TRUE);
         }
-      }
+        return visible;
+      });
+
       if (!editors.isEmpty()) updateEditors(file, editors);
     });
   }
@@ -229,7 +226,7 @@ public final class EditorNotificationsImpl extends EditorNotifications {
     myUpdateMerger.queue(new Update("update") {
       @Override
       public void run() {
-        for (VirtualFile file : fileEditorManager.getOpenFiles()) {
+        for (VirtualFile file : fileEditorManager.getOpenFilesWithRemotes()) {
           updateNotifications(file);
         }
       }

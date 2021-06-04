@@ -1,17 +1,19 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.render;
 
 import com.intellij.openapi.util.Key;
 import com.intellij.util.ui.JBUI.CurrentTheme;
 import com.intellij.util.ui.UIUtil;
-import com.intellij.util.ui.tree.WideSelectionTreeUI;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.Color;
+import java.awt.*;
 import java.util.function.Supplier;
+
+import static com.intellij.openapi.util.IconLoader.getDarkIcon;
+import static com.intellij.util.ui.StartupUiUtil.isUnderDarcula;
 
 public final class RenderingUtil {
   /**
@@ -40,6 +42,16 @@ public final class RenderingUtil {
    */
   @ApiStatus.Internal
   public static final Key<Supplier<Color>> CUSTOM_SELECTION_BACKGROUND = Key.create("CUSTOM_SELECTION_BACKGROUND");
+
+
+  /**
+   * @param icon     an icon to render
+   * @param selected specifies whether is a selection background expected
+   * @return a lighter icon if applicable, the given icon otherwise
+   */
+  public static @Nullable Icon getIcon(@Nullable Icon icon, boolean selected) {
+    return !selected || icon == null || isUnderDarcula() ? icon : getDarkIcon(icon, true);
+  }
 
 
   @NotNull
@@ -189,9 +201,6 @@ public final class RenderingUtil {
   }
 
   private static JTable getTableFor(@NotNull JTree tree) {
-    @SuppressWarnings("deprecation")
-    Object property = tree.getClientProperty(WideSelectionTreeUI.TREE_TABLE_TREE_KEY);
-    if (property instanceof JTable) return (JTable)property;
     JComponent sibling = UIUtil.getClientProperty(tree, FOCUSABLE_SIBLING);
     return sibling instanceof JTable ? (JTable)sibling : null;
   }

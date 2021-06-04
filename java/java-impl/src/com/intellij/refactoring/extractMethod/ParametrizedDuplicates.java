@@ -406,11 +406,11 @@ public final class ParametrizedDuplicates {
     }
   }
 
-  PsiMethod getParametrizedMethod() {
+  public PsiMethod getParametrizedMethod() {
     return myParametrizedMethod;
   }
 
-  PsiMethodCallExpression getParametrizedCall() {
+  public PsiMethodCallExpression getParametrizedCall() {
     return myParametrizedCall;
   }
 

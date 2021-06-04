@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.inspections;
 
-import com.intellij.CommonBundle;
 import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemDescriptor;
@@ -9,7 +8,8 @@ import com.intellij.codeInspection.ProblemsHolder;
 import com.intellij.codeInspection.util.InspectionMessage;
 import com.intellij.codeInspection.util.IntentionFamilyName;
 import com.intellij.codeInspection.util.IntentionName;
-import com.intellij.ide.impl.TrustedProjects;
+import com.intellij.openapi.application.ex.ApplicationUtil;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.ModuleUtilCore;
@@ -17,6 +17,8 @@ import com.intellij.openapi.options.ConfigurableGroup;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil;
 import com.intellij.openapi.options.ex.ConfigurableVisitor;
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.impl.SdkConfigurationUtil;
@@ -24,7 +26,6 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.ui.configuration.ProjectSettingsService;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.ProjectSdksModel;
-import com.intellij.openapi.ui.MessageDialogBuilder;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.psi.PsiElement;
@@ -57,6 +58,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class PyInterpreterInspection extends PyInspection {
+
+  @NotNull
+  private static final Logger LOGGER = Logger.getInstance(PyInterpreterInspection.class);
+
   @NotNull
   private static final Pattern NAME = Pattern.compile("Python (?<version>\\d\\.\\d+)\\s*(\\((?<name>.+?)\\))?");
 
@@ -166,12 +171,21 @@ public final class PyInterpreterInspection extends PyInspection {
 
       final UserDataHolderBase context = new UserDataHolderBase();
 
-      final var detectedAssociatedEnvironments = PySdkExtKt.detectAssociatedEnvironments(module, existingSdks, context);
-      final var trustedState = TrustedProjects.getExplicitTrustedStateOrByHostAndLocation(module.getProject());
-      final var detectedEnv = PySdkExtKt.chooseEnvironmentToSuggest(module, detectedAssociatedEnvironments, trustedState);
-      if (detectedEnv != null) {
-        return new UseDetectedInterpreterFix(detectedEnv.getFirst(), existingSdks, true, module, detectedEnv.getSecond());
+      List<PyDetectedSdk> detectedAssociatedEnvs = Collections.emptyList();
+      try {
+        detectedAssociatedEnvs = ApplicationUtil.runWithCheckCanceled(
+          () -> PySdkExtKt.detectAssociatedEnvironments(module, existingSdks, context),
+          ProgressManager.getInstance().getProgressIndicator()
+        );
       }
+      catch (ProcessCanceledException e) {
+        throw e;
+      }
+      catch (Exception e) {
+        LOGGER.warn(e);
+      }
+      final var detectedAssociatedSdk = ContainerUtil.getFirstItem(detectedAssociatedEnvs);
+      if (detectedAssociatedSdk != null) return new UseDetectedInterpreterFix(detectedAssociatedSdk, existingSdks, true, module);
 
       final Pair<@IntentionName String, PyProjectSdkConfigurationExtension> textAndExtension
         = PyProjectSdkConfigurationExtension.findForModule(module);
@@ -179,7 +193,7 @@ public final class PyInterpreterInspection extends PyInspection {
 
       if (name != null) {
         final Matcher matcher = NAME.matcher(name);
-        if (!matcher.matches()) {
+        if (matcher.matches()) {
           final String venvName = matcher.group("name");
           if (venvName != null) {
             final PyDetectedSdk detectedAssociatedViaRootNameEnv = detectAssociatedViaRootNameEnv(venvName, module, existingSdks, context);
@@ -459,52 +473,19 @@ public final class PyInterpreterInspection extends PyInspection {
     @NotNull
     private final Module myModule;
 
-    private final boolean myNeedsConfirmation;
-
-    private UseDetectedInterpreterFix(@NotNull PyDetectedSdk detectedSdk,
-                                      @NotNull List<Sdk> existingSdks,
-                                      boolean associate,
-                                      @NotNull Module module,
-                                      boolean needsConfirmation) {
-      super(detectedSdk);
-      myExistingSdks = existingSdks;
-      myAssociate = associate;
-      myModule = module;
-      myNeedsConfirmation = needsConfirmation;
-    }
-
     private UseDetectedInterpreterFix(@NotNull PyDetectedSdk detectedSdk,
                                       @NotNull List<Sdk> existingSdks,
                                       boolean associate,
                                       @NotNull Module module) {
-      this(detectedSdk, existingSdks, associate, module, false);
+      super(detectedSdk);
+      myExistingSdks = existingSdks;
+      myAssociate = associate;
+      myModule = module;
     }
 
     @Override
     public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       PyUiUtil.clearFileLevelInspectionResults(project);
-
-      if (myNeedsConfirmation) {
-        final var confirmation = MessageDialogBuilder.yesNo(
-          PyPsiBundle.message("INSP.interpreter.untrusted.project.warning.title"),
-          PyPsiBundle.message(
-            "INSP.interpreter.untrusted.project.warning.text",
-            CommonBundle.message("button.without.mnemonic.yes"),
-            CommonBundle.message("button.without.mnemonic.no")
-          )
-        )
-          .asWarning()
-          .doNotAsk(TrustedProjects.createDoNotAskOptionForHost(project))
-          .ask(project);
-
-        TrustedProjects.setTrusted(project, confirmation);
-
-        if (!confirmation) {
-          PySdkExtKt.excludeInnerVirtualEnv(myModule, mySdk);
-          return;
-        }
-      }
-
       final Sdk newSdk = myAssociate
                          ? PySdkExtKt.setupAssociated(mySdk, myExistingSdks, BasePySdkExtKt.getBasePath(myModule))
                          : PySdkExtKt.setup(mySdk, myExistingSdks);

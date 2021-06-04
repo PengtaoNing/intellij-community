@@ -15,6 +15,7 @@ import com.intellij.codeInspection.unusedSymbol.UnusedSymbolLocalInspectionBase;
 import com.intellij.codeInspection.util.RefFilter;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.Key;
@@ -32,7 +33,7 @@ import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.uast.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class UnusedDeclarationInspectionBase extends GlobalInspectionTool {
   private static final Logger LOG = Logger.getInstance(UnusedDeclarationInspectionBase.class);
@@ -52,6 +53,11 @@ public class UnusedDeclarationInspectionBase extends GlobalInspectionTool {
   private static final Key<Integer> PHASE_KEY = Key.create("java.unused.declaration.phase");
 
   private final boolean myEnabledInEditor;
+
+  /**
+   * We can't have a direct link on the entry points as it blocks dynamic unloading of the plugins e.g. TestNG
+   */
+  private final Map<String, Element> entryPointElements = new ConcurrentHashMap<>();
 
   @SuppressWarnings("TestOnlyProblems")
   public UnusedDeclarationInspectionBase() {
@@ -115,10 +121,17 @@ public class UnusedDeclarationInspectionBase extends GlobalInspectionTool {
     myLocalInspectionBase.readSettings(node);
     for (EntryPoint extension : getExtensions()) {
       extension.readExternal(node);
+      saveEntryPointElement(extension);
     }
 
     final String testEntriesAttr = node.getAttributeValue("test_entries");
     TEST_ENTRY_POINTS = testEntriesAttr == null || Boolean.parseBoolean(testEntriesAttr);
+  }
+
+  protected void saveEntryPointElement(@NotNull EntryPoint entryPoint) {
+    Element element = new Element("root");
+    entryPoint.writeExternal(element);
+    entryPointElements.put(entryPoint.getDisplayName(), element);
   }
 
   @Override
@@ -700,10 +713,26 @@ public class UnusedDeclarationInspectionBase extends GlobalInspectionTool {
   }
 
   public List<EntryPoint> getExtensions() {
-    return EntryPointsManagerBase.DEAD_CODE_EP_NAME.getExtensionList()
-      .stream()
-      .sorted((o1, o2) -> o1.getDisplayName().compareToIgnoreCase(o2.getDisplayName()))
-      .collect(Collectors.toList());
+    List<EntryPoint> extensions = EntryPointsManagerBase.DEAD_CODE_EP_NAME.getExtensionList();
+    List<EntryPoint> deadCodeAddIns = new ArrayList<>(extensions.size());
+    for (EntryPoint entryPoint : extensions) {
+      try {
+        EntryPoint clone = entryPoint.clone();
+        Element element = entryPointElements.get(entryPoint.getDisplayName());
+        if (element != null) {
+          clone.readExternal(element);
+        }
+        deadCodeAddIns.add(clone);
+      }
+      catch (ProcessCanceledException e) {
+        throw e;
+      }
+      catch (Exception e) {
+        LOG.error(e);
+      }
+    }
+    deadCodeAddIns.sort((o1, o2) -> o1.getDisplayName().compareToIgnoreCase(o2.getDisplayName()));
+    return deadCodeAddIns;
   }
 
   public static String getDisplayNameText() {

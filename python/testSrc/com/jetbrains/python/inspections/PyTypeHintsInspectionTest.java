@@ -1,7 +1,6 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.inspections;
 
-import com.intellij.testFramework.LightProjectDescriptor;
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
@@ -18,14 +17,11 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
 
   // PY-28243
   public void testTypeVarPlacement() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("from typing import List, TypeVar\n" +
-                         "\n" +
-                         "T0 = TypeVar('T0')\n" +
-                         "a: List[T0]\n" +
-                         "b: List[<warning descr=\"A 'TypeVar()' expression must always directly be assigned to a variable\">TypeVar('T1')</warning>]")
-    );
+    doTestByText("from typing import List, TypeVar\n" +
+                 "\n" +
+                 "T0 = TypeVar('T0')\n" +
+                 "a: List[T0]\n" +
+                 "b: List[<warning descr=\"A 'TypeVar()' expression must always directly be assigned to a variable\">TypeVar('T1')</warning>]");
   }
 
   // PY-28243
@@ -524,153 +520,138 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
 
   // PY-31788
   public void testInstanceAndClassChecksOnGenericParameter() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON35,
-      () -> doTestByText("from typing import List, Type, TypeVar\n" +
-                         "\n" +
-                         "T = TypeVar(\"T\")\n" +
-                         "\n" +
-                         "class A:\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def foo(p1: T, p2: Type[T], p3: List[T]):\n" +
-                         "    assert isinstance(A(), <error descr=\"Type variables cannot be used with instance and class checks\">p1</error>)\n" +
-                         "    assert issubclass(A, <error descr=\"Type variables cannot be used with instance and class checks\">p1</error>)\n" +
-                         "\n" +
-                         "    assert isinstance(A(), p2)\n" +
-                         "    assert issubclass(A, p2)\n" +
-                         "\n" +
-                         "    assert isinstance(A(), <error descr=\"Type variables cannot be used with instance and class checks\">p3</error>)\n" +
-                         "    assert issubclass(A, <error descr=\"Type variables cannot be used with instance and class checks\">p3</error>)")
-    );
+    doTestByText("from typing import List, Type, TypeVar\n" +
+                 "\n" +
+                 "T = TypeVar(\"T\")\n" +
+                 "\n" +
+                 "class A:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def foo(p1: T, p2: Type[T], p3: List[T]):\n" +
+                 "    assert isinstance(A(), <error descr=\"Type variables cannot be used with instance and class checks\">p1</error>)\n" +
+                 "    assert issubclass(A, <error descr=\"Type variables cannot be used with instance and class checks\">p1</error>)\n" +
+                 "\n" +
+                 "    assert isinstance(A(), p2)\n" +
+                 "    assert issubclass(A, p2)\n" +
+                 "\n" +
+                 "    assert isinstance(A(), <error descr=\"Type variables cannot be used with instance and class checks\">p3</error>)\n" +
+                 "    assert issubclass(A, <error descr=\"Type variables cannot be used with instance and class checks\">p3</error>)");
   }
 
   // PY-16853
   public void testParenthesesAndTyping() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> doTestByText("from typing import Union, TypeAlias\n" +
-                         "\n" +
-                         "def a(b: <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>):\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def c(d):\n" +
-                         "    # type: (<error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>) -> None\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def e(f: <error descr=\"Generics should be specified through square brackets\">Union()</error>):\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def g(h):\n" +
-                         "    # type: (<error descr=\"Generics should be specified through square brackets\">Union()</error>) -> None\n" +
-                         "    pass\n" +
-                         "    \n" +
-                         "v1 = <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>\n" +
-                         "v2 = None  # type: <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>\n" +
-                         "\n" +
-                         "U = Union\n" +
-                         "def i(j: <error descr=\"Generics should be specified through square brackets\">U(int, str)</error>):\n" +
-                         "    pass\n" +
-                         "    \n" +
-                         "v3 = <error descr=\"Generics should be specified through square brackets\">U(int, str)</error>\n" +
-                         "\n" +
-                         "with foo() as bar:  # type: <error descr=\"Generics should be specified through square brackets\">Union(int,str)</error>\n" +
-                         "    pass\n" +
-                         "    \n" +
-                         "for x in []:  # type: <error descr=\"Generics should be specified through square brackets\">Union(int,str)</error>\n" +
-                         "    pass\n" +
-                         "    \n" +
-                         "A1: TypeAlias = <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>\n" +
-                         "A2: TypeAlias = '<error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>'\n" +
-                         "A3 = <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>  # type: TypeAlias\n" +
-                         "A3 = '<error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>'  # type: TypeAlias")
-    );
+    doTestByText("from typing import Union, TypeAlias\n" +
+                 "\n" +
+                 "def a(b: <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>):\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def c(d):\n" +
+                 "    # type: (<error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>) -> None\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def e(f: <error descr=\"Generics should be specified through square brackets\">Union()</error>):\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def g(h):\n" +
+                 "    # type: (<error descr=\"Generics should be specified through square brackets\">Union()</error>) -> None\n" +
+                 "    pass\n" +
+                 "    \n" +
+                 "v1 = <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>\n" +
+                 "v2 = None  # type: <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>\n" +
+                 "\n" +
+                 "U = Union\n" +
+                 "def i(j: <error descr=\"Generics should be specified through square brackets\">U(int, str)</error>):\n" +
+                 "    pass\n" +
+                 "    \n" +
+                 "v3 = <error descr=\"Generics should be specified through square brackets\">U(int, str)</error>\n" +
+                 "\n" +
+                 "with foo() as bar:  # type: <error descr=\"Generics should be specified through square brackets\">Union(int,str)</error>\n" +
+                 "    pass\n" +
+                 "    \n" +
+                 "for x in []:  # type: <error descr=\"Generics should be specified through square brackets\">Union(int,str)</error>\n" +
+                 "    pass\n" +
+                 "    \n" +
+                 "A1: TypeAlias = <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>\n" +
+                 "A2: TypeAlias = '<error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>'\n" +
+                 "A3 = <error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>  # type: TypeAlias\n" +
+                 "A3 = '<error descr=\"Generics should be specified through square brackets\">Union(int, str)</error>'  # type: TypeAlias");
   }
 
   // PY-16853
   public void testParenthesesAndCustom() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> doTestByText("from typing import Generic, TypeVar, TypeAlias\n" +
-                         "\n" +
-                         "T = TypeVar(\"T\")\n" +
-                         "\n" +
-                         "class A(Generic[T]):\n" +
-                         "    def __init__(self, v):\n" +
-                         "        pass\n" +
-                         "\n" +
-                         "def a(b: <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>):\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def c(d):\n" +
-                         "    # type: (<warning descr=\"Generics should be specified through square brackets\">A(int)</warning>) -> None\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def e(f: <warning descr=\"Generics should be specified through square brackets\">A()</warning>):\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "def g(h):\n" +
-                         "    # type: (<warning descr=\"Generics should be specified through square brackets\">A()</warning>) -> None\n" +
-                         "    pass\n" +
-                         "    \n" +
-                         "v1 = A(int)\n" +
-                         "v2 = None  # type: <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>\n" +
-                         "\n" +
-                         "U = A\n" +
-                         "def i(j: <warning descr=\"Generics should be specified through square brackets\">U(int)</warning>):\n" +
-                         "    pass\n" +
-                         "    \n" +
-                         "v3 = None  # type: <warning descr=\"Generics should be specified through square brackets\">U(int)</warning>\n" +
-                         "\n" +
-                         "A1: TypeAlias = <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>\n" +
-                         "A2: TypeAlias = '<warning descr=\"Generics should be specified through square brackets\">A(int)</warning>'\n" +
-                         "A3 = <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>  # type: TypeAlias\n" +
-                         "A4 = '<warning descr=\"Generics should be specified through square brackets\">A(int)</warning>'  # type: TypeAlias")
-    );
+    doTestByText("from typing import Generic, TypeVar, TypeAlias\n" +
+                 "\n" +
+                 "T = TypeVar(\"T\")\n" +
+                 "\n" +
+                 "class A(Generic[T]):\n" +
+                 "    def __init__(self, v):\n" +
+                 "        pass\n" +
+                 "\n" +
+                 "def a(b: <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>):\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def c(d):\n" +
+                 "    # type: (<warning descr=\"Generics should be specified through square brackets\">A(int)</warning>) -> None\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def e(f: <warning descr=\"Generics should be specified through square brackets\">A()</warning>):\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "def g(h):\n" +
+                 "    # type: (<warning descr=\"Generics should be specified through square brackets\">A()</warning>) -> None\n" +
+                 "    pass\n" +
+                 "    \n" +
+                 "v1 = A(int)\n" +
+                 "v2 = None  # type: <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>\n" +
+                 "\n" +
+                 "U = A\n" +
+                 "def i(j: <warning descr=\"Generics should be specified through square brackets\">U(int)</warning>):\n" +
+                 "    pass\n" +
+                 "    \n" +
+                 "v3 = None  # type: <warning descr=\"Generics should be specified through square brackets\">U(int)</warning>\n" +
+                 "\n" +
+                 "A1: TypeAlias = <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>\n" +
+                 "A2: TypeAlias = '<warning descr=\"Generics should be specified through square brackets\">A(int)</warning>'\n" +
+                 "A3 = <warning descr=\"Generics should be specified through square brackets\">A(int)</warning>  # type: TypeAlias\n" +
+                 "A4 = '<warning descr=\"Generics should be specified through square brackets\">A(int)</warning>'  # type: TypeAlias");
   }
 
   // PY-20530
   public void testCallableParameters() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> doTestByText("from typing import Callable, TypeAlias\n" +
-                         "\n" +
-                         "a: Callable[..., str]\n" +
-                         "b: Callable[[int], str]\n" +
-                         "c: Callable[[int, str], str]\n" +
-                         "\n" +
-                         "d: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">...</error>]\n" +
-                         "e: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>, str]\n" +
-                         "f: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int, str</error>, str]\n" +
-                         "g: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">(int, str)</error>, str]\n" +
-                         "h: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]\n" +
-                         "h: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">(int)</error>, str]\n" +
-                         "\n" +
-                         "A1: TypeAlias = Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]\n" +
-                         "A2: TypeAlias = 'Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]'\n" +
-                         "A3 = Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]  # type: TypeAlias\n" +
-                         "A4 = 'Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]'  # type: TypeAlias")
-    );
+    doTestByText("from typing import Callable, TypeAlias\n" +
+                 "\n" +
+                 "a: Callable[..., str]\n" +
+                 "b: Callable[[int], str]\n" +
+                 "c: Callable[[int, str], str]\n" +
+                 "\n" +
+                 "d: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">...</error>]\n" +
+                 "e: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>, str]\n" +
+                 "f: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int, str</error>, str]\n" +
+                 "g: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">(int, str)</error>, str]\n" +
+                 "h: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]\n" +
+                 "h: Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">(int)</error>, str]\n" +
+                 "\n" +
+                 "A1: TypeAlias = Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]\n" +
+                 "A2: TypeAlias = 'Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]'\n" +
+                 "A3 = Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]  # type: TypeAlias\n" +
+                 "A4 = 'Callable[<error descr=\"'Callable' must be used as 'Callable[[arg, ...], result]'\">int</error>]'  # type: TypeAlias");
   }
 
   // PY-20530
   public void testSelf() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("class A:\n" +
-                         "    def method(self, i: int):\n" +
-                         "        v1: <error descr=\"Invalid type 'self'\">self</error>.B\n" +
-                         "        v2 = None  # type: <error descr=\"Invalid type 'self'\">self</error>.B\n" +
-                         "        print(self.B)\n" +
-                         "\n" +
-                         "    class B:\n" +
-                         "        pass\n" +
-                         "\n" +
-                         "class self:\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "v: self")
-    );
+    doTestByText("class A:\n" +
+                 "    def method(self, i: int):\n" +
+                 "        v1: <error descr=\"Invalid type 'self'\">self</error>.B\n" +
+                 "        v2 = None  # type: <error descr=\"Invalid type 'self'\">self</error>.B\n" +
+                 "        print(self.B)\n" +
+                 "\n" +
+                 "    class B:\n" +
+                 "        pass\n" +
+                 "\n" +
+                 "class self:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "v: self");
   }
 
   // PY-20530
@@ -686,27 +667,24 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
 
   // PY-20530
   public void testAnnotationAndTypeComment() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText(
-        "a<warning descr=\"Types specified both in a type comment and annotation\">: int</warning> = None  <warning descr=\"Types specified both in a type comment and annotation\"># type: int</warning>\n" +
-        "\n" +
-        "def foo(a<warning descr=\"Types specified both in a type comment and annotation\">: int</warning>  <warning descr=\"Types specified both in a type comment and annotation\"># type: int</warning>\n" +
-        "        ,):\n" +
-        "    pass\n" +
-        "\n" +
-        "def <warning descr=\"Types specified both in a type comment and annotation\">bar</warning>(a: int) -> int:\n" +
-        "    <warning descr=\"Types specified both in a type comment and annotation\"># type: (int) -> int</warning>\n" +
-        "    pass\n" +
-        "    \n" +
-        "def <warning descr=\"Types specified both in a type comment and annotation\">baz1</warning>(a: int):\n" +
-        "    <warning descr=\"Types specified both in a type comment and annotation\"># type: (int) -> int</warning>\n" +
-        "    pass\n" +
-        "    \n" +
-        "def <warning descr=\"Types specified both in a type comment and annotation\">baz2</warning>(a) -> int:\n" +
-        "    <warning descr=\"Types specified both in a type comment and annotation\"># type: (int) -> int</warning>\n" +
-        "    pass"
-      )
+    doTestByText(
+      "a<warning descr=\"Types specified both in a type comment and annotation\">: int</warning> = None  <warning descr=\"Types specified both in a type comment and annotation\"># type: int</warning>\n" +
+      "\n" +
+      "def foo(a<warning descr=\"Types specified both in a type comment and annotation\">: int</warning>  <warning descr=\"Types specified both in a type comment and annotation\"># type: int</warning>\n" +
+      "        ,):\n" +
+      "    pass\n" +
+      "\n" +
+      "def <warning descr=\"Types specified both in a type comment and annotation\">bar</warning>(a: int) -> int:\n" +
+      "    <warning descr=\"Types specified both in a type comment and annotation\"># type: (int) -> int</warning>\n" +
+      "    pass\n" +
+      "    \n" +
+      "def <warning descr=\"Types specified both in a type comment and annotation\">baz1</warning>(a: int):\n" +
+      "    <warning descr=\"Types specified both in a type comment and annotation\"># type: (int) -> int</warning>\n" +
+      "    pass\n" +
+      "    \n" +
+      "def <warning descr=\"Types specified both in a type comment and annotation\">baz2</warning>(a) -> int:\n" +
+      "    <warning descr=\"Types specified both in a type comment and annotation\"># type: (int) -> int</warning>\n" +
+      "    pass"
     );
   }
 
@@ -865,92 +843,74 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
 
   // PY-20530
   public void testTypingMemberParameters() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText(
-        "from typing import Callable, List\n" +
-        "\n" +
-        "foo1: Callable[[int], <error descr=\"Parameters to generic types must be types\">[int]</error>] = None\n" +
-        "foo2: Callable[[int], <error descr=\"Parameters to generic types must be types\">[int, str]</error>] = None\n" +
-        "foo3: List[<error descr=\"Parameters to generic types must be types\">[int]</error>]\n" +
-        "foo4: List[<error descr=\"Parameters to generic types must be types\">[int, str]</error>]\n" +
-        "\n" +
-        "l1 = [int]\n" +
-        "l2 = [int, str]\n" +
-        "\n" +
-        "foo5: Callable[[int], <error descr=\"Parameters to generic types must be types\">l1</error>] = None\n" +
-        "foo6: Callable[[int], <error descr=\"Parameters to generic types must be types\">l2</error>] = None\n" +
-        "foo7: List[<error descr=\"Parameters to generic types must be types\">l1</error>]\n" +
-        "foo8: List[<error descr=\"Parameters to generic types must be types\">l2</error>]"
-      )
+    doTestByText(
+      "from typing import Callable, List\n" +
+      "\n" +
+      "foo1: Callable[[int], <error descr=\"Parameters to generic types must be types\">[int]</error>] = None\n" +
+      "foo2: Callable[[int], <error descr=\"Parameters to generic types must be types\">[int, str]</error>] = None\n" +
+      "foo3: List[<error descr=\"Parameters to generic types must be types\">[int]</error>]\n" +
+      "foo4: List[<error descr=\"Parameters to generic types must be types\">[int, str]</error>]\n" +
+      "\n" +
+      "l1 = [int]\n" +
+      "l2 = [int, str]\n" +
+      "\n" +
+      "foo5: Callable[[int], <error descr=\"Parameters to generic types must be types\">l1</error>] = None\n" +
+      "foo6: Callable[[int], <error descr=\"Parameters to generic types must be types\">l2</error>] = None\n" +
+      "foo7: List[<error descr=\"Parameters to generic types must be types\">l1</error>]\n" +
+      "foo8: List[<error descr=\"Parameters to generic types must be types\">l2</error>]"
     );
   }
 
   // PY-32530
   public void testAnnotationAndIgnoreComment() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("def foo(a: str):  # type: ignore\n" +
-                         "    pass\n" +
-                         "def bar(a: Unknown):  # type: ignore[no-untyped-def, name-defined]\n" +
-                         "    pass")
-    );
+    doTestByText("def foo(a: str):  # type: ignore\n" +
+                 "    pass\n" +
+                 "def bar(a: Unknown):  # type: ignore[no-untyped-def, name-defined]\n" +
+                 "    pass");
   }
 
   public void testAnnotatingNonSelfAttribute() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("class A:\n" +
-                         "    def method(self, b):\n" +
-                         "        <warning descr=\"Non-self attribute could not be type hinted\">b.a</warning>: int = 1\n" +
-                         "\n" +
-                         "class B:\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "<warning descr=\"Non-self attribute could not be type hinted\">B.a</warning>: str = \"2\"\n" +
-                         "\n" +
-                         "def func(a):\n" +
-                         "    <warning descr=\"Non-self attribute could not be type hinted\">a.xxx</warning>: str = \"2\"")
-    );
+    doTestByText("class A:\n" +
+                 "    def method(self, b):\n" +
+                 "        <warning descr=\"Non-self attribute could not be type hinted\">b.a</warning>: int = 1\n" +
+                 "\n" +
+                 "class B:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "<warning descr=\"Non-self attribute could not be type hinted\">B.a</warning>: str = \"2\"\n" +
+                 "\n" +
+                 "def func(a):\n" +
+                 "    <warning descr=\"Non-self attribute could not be type hinted\">a.xxx</warning>: str = \"2\"");
   }
 
   // PY-35235
   public void testLiteral() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("from typing_extensions import Literal\n" +
-                         "\n" +
-                         "a: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">1 + 2</warning>]\n" +
-                         "b: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">4j</warning>]\n" +
-                         "c: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">3.14</warning>]\n" +
-                         "d: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">...</warning>]\n" +
-                         "\n" +
-                         "class A:\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "e: Literal[Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">A</warning>]]\n" +
-                         "f = Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">A</warning>]\n" +
-                         "g: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">f</warning>]")
-    );
+    doTestByText("from typing_extensions import Literal\n" +
+                 "\n" +
+                 "a: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">1 + 2</warning>]\n" +
+                 "b: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">4j</warning>]\n" +
+                 "c: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">3.14</warning>]\n" +
+                 "d: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">...</warning>]\n" +
+                 "\n" +
+                 "class A:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "e: Literal[Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">A</warning>]]\n" +
+                 "f = Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">A</warning>]\n" +
+                 "g: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">f</warning>]");
   }
 
   // PY-35235
   public void testLiteralWithoutArguments() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("from typing import Literal\n" +
-                         "a: <warning descr=\"'Literal' must have at least one parameter\">Literal</warning> = 1\n" +
-                         "b = 2  # type: <warning descr=\"'Literal' must have at least one parameter\">Literal</warning>")
-    );
+    doTestByText("from typing import Literal\n" +
+                 "a: <warning descr=\"'Literal' must have at least one parameter\">Literal</warning> = 1\n" +
+                 "b = 2  # type: <warning descr=\"'Literal' must have at least one parameter\">Literal</warning>");
   }
 
   // PY-35235
   public void testNonPlainStringAsTypingLiteralIndex() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTestByText("from typing import Literal\n" +
-                         "a: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">f\"1\"</warning>] = \"1\"")
-    );
+    doTestByText("from typing import Literal\n" +
+                 "a: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">f\"1\"</warning>] = \"1\"");
   }
 
   public void testParameterizedBuiltinCollectionsBefore39() {
@@ -963,30 +923,25 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
 
   // PY-42418
   public void testParameterizedBuiltinCollections() {
-    runWithLanguageLevel(LanguageLevel.getLatest(), () -> {
-      doTestByText("xs: type[str]\n" +
-                   "ys: tuple[int, str]\n" +
-                   "zs: dict[int, str]");
-    });
+    doTestByText("xs: type[str]\n" +
+                 "ys: tuple[int, str]\n" +
+                 "zs: dict[int, str]");
   }
 
   // PY-41847
   public void testAnnotated() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> doTestByText("from typing import Annotated\n" +
-                         "\n" +
-                         "a: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">1</warning>]\n" +
-                         "b: Annotated[int, 1]\n" +
-                         "c: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">...</warning>]\n" +
-                         "\n" +
-                         "class A:\n" +
-                         "    pass\n" +
-                         "\n" +
-                         "d: Annotated[A, '']\n" +
-                         "e: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">Annotated[A, True]</warning>]\n" +
-                         "f: Annotated[Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">A</warning>], '']")
-    );
+    doTestByText("from typing import Annotated\n" +
+                 "\n" +
+                 "a: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">1</warning>]\n" +
+                 "b: Annotated[int, 1]\n" +
+                 "c: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">...</warning>]\n" +
+                 "\n" +
+                 "class A:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "d: Annotated[A, '']\n" +
+                 "e: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">Annotated[A, True]</warning>]\n" +
+                 "f: Annotated[Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">A</warning>], '']");
   }
 
   // PY-41847
@@ -1008,64 +963,51 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
 
   // PY-41847
   public void testAnnotatedWithoutArguments() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> doTestByText("from typing import Annotated\n" +
-                         "a: <warning descr=\"'Annotated' must be called with at least two arguments\">Annotated</warning> = 1\n" +
-                         "b = 2  # type: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">int</warning>]")
-    );
+    doTestByText("from typing import Annotated\n" +
+                 "a: <warning descr=\"'Annotated' must be called with at least two arguments\">Annotated</warning> = 1\n" +
+                 "b = 2  # type: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">int</warning>]");
   }
 
   // PY-42334
   public void testParametrizedTypeAliasInExpression() {
-    runWithLanguageLevel(LanguageLevel.getLatest(),
-                         () -> doTestByText("from typing import TypeAlias\n" +
-                                            "\n" +
-                                            "Alias = TypeAlias[<error descr=\"'TypeAlias' cannot be parameterized\">int</error>]"));
+    doTestByText("from typing import TypeAlias\n" +
+                 "\n" +
+                 "Alias = TypeAlias[<error descr=\"'TypeAlias' cannot be parameterized\">int</error>]");
   }
 
 
   // PY-42334
   public void testParametrizedTypeAliasInAnnotation() {
-    runWithLanguageLevel(LanguageLevel.getLatest(),
-                         () -> doTestByText("from typing import TypeAlias\n" +
-                                            "\n" +
-                                            "Alias: <warning descr=\"'TypeAlias' must be used as standalone type hint\">TypeAlias</warning>[int]"));
+    doTestByText("from typing import TypeAlias\n" +
+                 "\n" +
+                 "Alias: <warning descr=\"'TypeAlias' must be used as standalone type hint\">TypeAlias</warning>[int]");
   }
 
   // PY-42334
   public void testNonTopLevelTypeAlias() {
-    runWithLanguageLevel(LanguageLevel.getLatest(),
-                         () -> doTestByText("from typing import TypeAlias\n" +
-                                            "\n" +
-                                            "Alias: Final[<warning descr=\"'TypeAlias' must be used as standalone type hint\">TypeAlias</warning>] = str"));
+    doTestByText("from typing import TypeAlias\n" +
+                 "\n" +
+                 "Alias: Final[<warning descr=\"'TypeAlias' must be used as standalone type hint\">TypeAlias</warning>] = str");
   }
 
   // PY-42334
   public void testNotInitializedTypeAlias() {
-    runWithLanguageLevel(LanguageLevel.getLatest(),
-                         () -> doTestByText("from typing import TypeAlias\n" +
-                                            "\n" +
-                                            "<warning descr=\"Type alias must be immediately initialized\">Alias</warning>: TypeAlias"));
+    doTestByText("from typing import TypeAlias\n" +
+                 "\n" +
+                 "<warning descr=\"Type alias must be immediately initialized\">Alias</warning>: TypeAlias");
   }
 
   // PY-42334
   public void testNotTopLevelTypeAlias() {
-    runWithLanguageLevel(LanguageLevel.getLatest(),
-                         () -> doTestByText("from typing import TypeAlias\n" +
-                                            "\n" +
-                                            "def func():\n" +
-                                            "    <warning descr=\"Type alias must be top-level declaration\">Alias</warning>: TypeAlias = str"));
+    doTestByText("from typing import TypeAlias\n" +
+                 "\n" +
+                 "def func():\n" +
+                 "    <warning descr=\"Type alias must be top-level declaration\">Alias</warning>: TypeAlias = str");
   }
 
   @NotNull
   @Override
   protected Class<? extends PyInspection> getInspectionClass() {
     return PyTypeHintsInspection.class;
-  }
-
-  @Override
-  protected LightProjectDescriptor getProjectDescriptor() {
-    return ourPy3Descriptor;
   }
 }

@@ -45,7 +45,7 @@ final class PersistentFSConnector {
                                                                           int expectedVersion,
                                                                           boolean useContentHashes) {
     Storage attributes = null;
-    RefCountingStorage contents = null;
+    RefCountingContentStorage contents = null;
     PersistentFSRecordsStorage records = null;
     ContentHashEnumerator contentHashesEnumerator = null;
     PersistentStringEnumerator names = null;
@@ -90,13 +90,17 @@ final class PersistentFSConnector {
         }
       };
 
-      contents = new RefCountingStorage(contentsFile,
-                                        CapacityAllocationPolicy.FIVE_PERCENT_FOR_GROWTH,
-                                        SequentialTaskExecutor.createSequentialApplicationPoolExecutor("FSRecords Content Write Pool"),
-                                        FSRecords.useCompressionUtil);
+      contents = new RefCountingContentStorage(contentsFile,
+                                               CapacityAllocationPolicy.FIVE_PERCENT_FOR_GROWTH,
+                                               SequentialTaskExecutor.createSequentialApplicationPoolExecutor("FSRecords Content Write Pool"),
+                                               FSRecords.useCompressionUtil,
+                                               useContentHashes);
 
       // sources usually zipped with 4x ratio
       contentHashesEnumerator = useContentHashes ? new ContentHashEnumerator(contentsHashesFile, storageLockContext) : null;
+      if (contentHashesEnumerator != null) {
+        checkContentSanity(contents, contentHashesEnumerator);
+      }
 
       boolean aligned = PagedFileStorage.BUFFER_SIZE % PersistentFSRecordsStorage.RECORD_SIZE == 0;
       if (!aligned) {
@@ -121,7 +125,7 @@ final class PersistentFSConnector {
 
       int version = getVersion(records, attributes, contents);
       if (version != expectedVersion) {
-        throw new IOException("FS repository version mismatch: actual=" + version + " expected=" + FSRecords.VERSION);
+        throw new IOException("FS repository version mismatch: actual=" + version + " expected=" + FSRecords.getVersion());
       }
 
       if (records.getConnectionStatus() != PersistentFSHeaders.SAFELY_CLOSED_MAGIC) {
@@ -170,6 +174,15 @@ final class PersistentFSConnector {
     }
   }
 
+  private static void checkContentSanity(@NotNull RefCountingContentStorage contents,
+                                         @NotNull ContentHashEnumerator contentHashesEnumerator) throws IOException {
+    int largestId = contentHashesEnumerator.getLargestId();
+    int liveRecordsCount = contents.getRecordsCount();
+    if (largestId != liveRecordsCount) {
+      throw new IOException("Content storage & enumerator corrupted");
+    }
+  }
+
   private static void invalidateIndex(@NotNull String reason) {
     LOG.info("Marking VFS as corrupted: " + reason);
     Path indexRoot = PathManager.getIndexRoot();
@@ -183,7 +196,7 @@ final class PersistentFSConnector {
     }
   }
 
-  private static IntList scanFreeRecords(PersistentFSRecordsStorage records) {
+  private static IntList scanFreeRecords(PersistentFSRecordsStorage records) throws IOException {
     final IntList freeRecords = new IntArrayList();
     final int fileLength = (int)records.length();
     LOG.assertTrue(fileLength % PersistentFSRecordsStorage.RECORD_SIZE == 0, "invalid file size: " + fileLength);
@@ -199,7 +212,7 @@ final class PersistentFSConnector {
 
   private static int getVersion(PersistentFSRecordsStorage records,
                                 Storage attributes,
-                                RefCountingStorage contents) {
+                                RefCountingContentStorage contents) throws IOException {
     final int recordsVersion = records.getVersion();
     if (attributes.getVersion() != recordsVersion || contents.getVersion() != recordsVersion) return -1;
 
@@ -208,8 +221,8 @@ final class PersistentFSConnector {
 
   private static void setCurrentVersion(PersistentFSRecordsStorage records,
                                         Storage attributes,
-                                        RefCountingStorage contents,
-                                        int version) {
+                                        RefCountingContentStorage contents,
+                                        int version) throws IOException {
     records.setVersion(version);
     attributes.setVersion(version);
     contents.setVersion(version);

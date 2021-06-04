@@ -11,8 +11,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import training.lang.LangSupport
 import training.learn.LearnBundle
+import training.learn.lesson.LessonManager
+import training.util.PerformActionUtil
 import training.util.findLanguageSupport
+import training.util.learningToolWindow
 import java.lang.ref.WeakReference
+import javax.swing.event.HyperlinkEvent
+import javax.swing.event.HyperlinkListener
 
 private class LearnProjectFileEditorListener(project: Project) : FileEditorManagerListener {
   private val ref by lazy { WeakReference(findLanguageSupport(project)) }
@@ -30,7 +35,20 @@ private class LearnProjectFileEditorListener(project: Project) : FileEditorManag
     }
     source.getAllEditors(file).forEach {
       ((it as? TextEditor)?.editor as? EditorEx)?.let { editorEx ->
-        EditorModificationUtil.setReadOnlyHint(editorEx, LearnBundle.message("learn.project.read.only.hint"))
+        val listener = HyperlinkListener { event ->
+          if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) {
+            when (event.description) {
+              "ift.close" -> {
+                PerformActionUtil.performAction("CloseProject", editorEx, project, withWriteAccess = false)
+              }
+              "ift.toolwindow" -> {
+                learningToolWindow(project)?.show()
+                LessonManager.instance.focusTask()
+              }
+            }
+          }
+        }
+        EditorModificationUtil.setReadOnlyHint(editorEx, LearnBundle.message("learn.project.read.only.hint", LearnBundle.message("toolwindow.stripe.Learn")), listener)
         editorEx.isViewer = true
       }
     }

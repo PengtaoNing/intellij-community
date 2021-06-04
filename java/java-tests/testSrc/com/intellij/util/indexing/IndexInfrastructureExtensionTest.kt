@@ -3,6 +3,7 @@ package com.intellij.util.indexing
 
 import com.intellij.ide.plugins.loadExtensionWithText
 import com.intellij.openapi.application.PathManager
+import com.intellij.openapi.extensions.InternalIgnoreDependencyViolation
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.stubs.StubIndexKey
@@ -21,7 +22,7 @@ class IndexInfrastructureExtensionTest : LightJavaCodeInsightFixtureTestCase() {
       it.toList().associate { p -> p.fileName.toString() to p.lastModified().toMillis() }.toSortedMap()
     }
 
-    val switcher = FileBasedIndexSwitcher()
+    val switcher = FileBasedIndexTumbler()
     switcher.turnOff()
     switcher.turnOn()
 
@@ -43,6 +44,7 @@ class IndexInfrastructureExtensionTest : LightJavaCodeInsightFixtureTestCase() {
 
 const val testInfraExtensionFile = "_test_extension"
 
+@InternalIgnoreDependencyViolation
 class TestIndexInfrastructureExtension : FileBasedIndexInfrastructureExtension {
   override fun createFileIndexingStatusProcessor(project: Project): FileBasedIndexInfrastructureExtension.FileIndexingStatusProcessor? =
     null
@@ -57,10 +59,12 @@ class TestIndexInfrastructureExtension : FileBasedIndexInfrastructureExtension {
 
   override fun onStubIndexVersionChanged(indexId: StubIndexKey<*, *>) = Unit
 
-  override fun initialize(): FileBasedIndexInfrastructureExtension.InitializationResult
+  override fun initialize(indexLayoutId: String?): FileBasedIndexInfrastructureExtension.InitializationResult
   = FileBasedIndexInfrastructureExtension.InitializationResult.INDEX_REBUILD_REQUIRED
 
   override fun resetPersistentState() = Unit
+
+  override fun resetPersistentState(indexId: ID<*, *>) = Unit
 
   override fun shutdown() = Unit
 

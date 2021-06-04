@@ -17,6 +17,7 @@ import com.intellij.workspaceModel.storage.checkConsistency
 import com.intellij.workspaceModel.storage.impl.url.toVirtualFileUrl
 import com.intellij.workspaceModel.storage.toBuilder
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
+import org.jetbrains.jps.model.serialization.PathMacroUtil
 import org.junit.*
 import java.io.File
 
@@ -62,7 +63,8 @@ class ImlReplaceBySourceTest {
       </module>
     """.trimIndent())
 
-    val configLocation = JpsProjectConfigLocation.DirectoryBased(temp.root.toVirtualFileUrl(virtualFileManager))
+    val projectDir = temp.root.toVirtualFileUrl(virtualFileManager)
+    val configLocation = JpsProjectConfigLocation.DirectoryBased(projectDir, projectDir.append(PathMacroUtil.DIRECTORY_STORE_NAME))
 
     var builder = WorkspaceEntityStorageBuilder.create()
     JpsProjectEntitiesLoader.loadModule(moduleFile.toPath(), configLocation, builder, TestErrorReporter, virtualFileManager)
@@ -114,7 +116,7 @@ class ImlReplaceBySourceTest {
 
     val storageBuilder2 = WorkspaceEntityStorageBuilder.create()
     val reader = CachingJpsFileContentReader(projectFile.asConfigLocation(virtualFileManager).baseDirectoryUrlString)
-    data.loadAll(reader, storageBuilder2, TestErrorReporter)
+    data.loadAll(reader, storageBuilder2, TestErrorReporter, null)
 
     val before = storageBuilder1.toStorage()
     storageBuilder1 = before.toBuilder()

@@ -22,6 +22,7 @@ import java.awt.event.ActionEvent;
 import java.nio.file.Path;
 
 import static java.awt.GridBagConstraints.*;
+import static javax.swing.SwingConstants.LEFT;
 import static javax.swing.SwingConstants.RIGHT;
 
 @ApiStatus.NonExtendable
@@ -30,7 +31,9 @@ public class EditMemorySettingsDialog extends DialogWrapper {
 
   private final VMOptions.MemoryKind myOption;
   private final boolean myMemoryLow;
+  private final int myLowerBound;
   private JTextField myNewValueField;
+  private Action mySaveAndExitAction, mySaveAction;
 
   public EditMemorySettingsDialog() {
     this(VMOptions.MemoryKind.HEAP, false);
@@ -44,6 +47,7 @@ public class EditMemorySettingsDialog extends DialogWrapper {
     super(false);
     myOption = option;
     myMemoryLow = memoryLow;
+    myLowerBound = Math.max(option == VMOptions.MemoryKind.HEAP ? VMOptions.readOption(VMOptions.MemoryKind.MIN_HEAP, false) : 0, MIN_VALUE);
     setTitle(DiagnosticBundle.message("change.memory.title"));
     init();
     initValidation();
@@ -82,29 +86,33 @@ public class EditMemorySettingsDialog extends DialogWrapper {
       else {
         text = DiagnosticBundle.message("change.memory.message");
       }
-      panel.add(new JBLabel(text), new GridBagConstraints(0, 0, 4, 1, 1.0, 1.0, WEST, NONE, JBUI.emptyInsets(), 0, 0));
+      panel.add(new JBLabel(text), new GridBagConstraints(0, 0, 5, 1, 1.0, 1.0, WEST, NONE, JBUI.emptyInsets(), 0, 0));
     }
 
     panel.add(new JBLabel(DiagnosticBundle.message("change.memory.act")),
-              new GridBagConstraints(0, 1, 4, 1, 1.0, 1.0, WEST, NONE, JBUI.emptyInsets(), 0, 0));
+              new GridBagConstraints(0, 1, 5, 1, 1.0, 1.0, WEST, NONE, JBUI.emptyInsets(), 0, 0));
 
     JBLabel prompt = new JBLabel(myOption.label() + ':', RIGHT);
     prompt.setToolTipText('-' + myOption.optionName);
-    panel.add(prompt, new GridBagConstraints(0, 2, 1, 1, 1.0, 1.0, EAST, HORIZONTAL, JBUI.emptyInsets(), 0, 0));
+    panel.add(prompt, new GridBagConstraints(1, 2, 1, 1, 1.0, 1.0, EAST, HORIZONTAL, JBUI.emptyInsets(), 0, 0));
 
     myNewValueField = new JTextField(5);
     myNewValueField.setText(String.valueOf(suggested));
-    panel.add(myNewValueField, new GridBagConstraints(1, 2, 1, 1, 0.0, 1.0, CENTER, NONE, JBUI.insets(10, 10, 10, 2), 0, 0));
+    panel.add(myNewValueField, new GridBagConstraints(2, 2, 1, 1, 0.0, 1.0, CENTER, NONE, JBUI.insets(10, 10, 10, 2), 0, 0));
 
     panel.add(new JBLabel(DiagnosticBundle.message("change.memory.units")),
-              new GridBagConstraints(2, 2, 1, 1, 0.0, 1.0, WEST, NONE, JBUI.emptyInsets(), 0, 0));
+              new GridBagConstraints(3, 2, 1, 1, 0.0, 1.0, WEST, NONE, JBUI.emptyInsets(), 0, 0));
 
     String formatted = current == -1 ? DiagnosticBundle.message("change.memory.unknown") : String.valueOf(current);
     panel.add(new JBLabel(DiagnosticBundle.message("change.memory.current", formatted), RIGHT).withFont(JBFont.label().asItalic()),
-              new GridBagConstraints(3, 2, 1, 1, 0.0, 1.0, WEST, NONE, JBUI.insetsLeft(10), 0, 0));
+              new GridBagConstraints(4, 2, 1, 1, 0.0, 1.0, WEST, NONE, JBUI.insetsLeft(10), 0, 0));
 
-    panel.add(new JBLabel(DiagnosticBundle.message("change.memory.file", file), AllIcons.General.Information, RIGHT),
-              new GridBagConstraints(0, 3, 4, 1, 1.0, 1.0, EAST, HORIZONTAL, JBUI.emptyInsets(), 0, 0));
+    panel.add(new JBLabel(AllIcons.General.Information),
+              new GridBagConstraints(0, 3, 1, 1, 0.0, 1.0, WEST, NONE, JBUI.insetsRight(2), 0, 0));
+    panel.add(new JBLabel(DiagnosticBundle.message("change.memory.file"), LEFT).withFont(JBFont.label().asBold()),
+              new GridBagConstraints(1, 3, 4, 1, 1.0, 1.0, WEST, HORIZONTAL, JBUI.emptyInsets(), 0, 0));
+    panel.add(new JBLabel(file.toString(), LEFT),
+              new GridBagConstraints(1, 4, 4, 1, 1.0, 1.0, WEST, HORIZONTAL, JBUI.emptyInsets(), 0, 0));
 
     return panel;
   }
@@ -112,25 +120,23 @@ public class EditMemorySettingsDialog extends DialogWrapper {
   @Override
   protected Action @NotNull [] createActions() {
     boolean canRestart = ApplicationManager.getApplication().isRestartCapable();
-    return new Action[]{
-      new DialogWrapperAction(DiagnosticBundle.message(canRestart ? "change.memory.apply" : "change.memory.exit")) {
-        @Override
-        protected void doAction(ActionEvent e) {
-          if (save()) {
-            ((ApplicationEx)ApplicationManager.getApplication()).restart(true);
-          }
+    mySaveAndExitAction = new DialogWrapperAction(DiagnosticBundle.message(canRestart ? "change.memory.apply" : "change.memory.exit")) {
+      @Override
+      protected void doAction(ActionEvent e) {
+        if (save()) {
+          ((ApplicationEx)ApplicationManager.getApplication()).restart(true);
         }
-      },
-      new DialogWrapperAction(IdeBundle.message("button.save")) {
-        @Override
-        protected void doAction(ActionEvent e) {
-          if (save()) {
-            close(OK_EXIT_CODE);
-          }
-        }
-      },
-      getCancelAction()
+      }
     };
+    mySaveAction = new DialogWrapperAction(IdeBundle.message("button.save")) {
+      @Override
+      protected void doAction(ActionEvent e) {
+        if (save()) {
+          close(OK_EXIT_CODE);
+        }
+      }
+    };
+    return new Action[]{mySaveAndExitAction, mySaveAction, getCancelAction()};
   }
 
   @Override
@@ -140,15 +146,18 @@ public class EditMemorySettingsDialog extends DialogWrapper {
 
   @Override
   protected @Nullable ValidationInfo doValidate() {
+    ValidationInfo info = null;
     try {
       int value = Integer.parseInt(myNewValueField.getText());
-      if (value < MIN_VALUE) return new ValidationInfo(DiagnosticBundle.message("change.memory.low", MIN_VALUE), myNewValueField);
-      if (value > 800 && CpuArch.isIntel32()) return new ValidationInfo(DiagnosticBundle.message("change.memory.large"), myNewValueField);
-      return null;
+      if (value <= myLowerBound) info = new ValidationInfo(DiagnosticBundle.message("change.memory.low", myLowerBound), myNewValueField);
+      if (value > 800 && CpuArch.isIntel32()) info = new ValidationInfo(DiagnosticBundle.message("change.memory.large"), myNewValueField);
     }
     catch (NumberFormatException e) {
-      return new ValidationInfo(DiagnosticBundle.message("change.memory.integer"), myNewValueField);
+      info = new ValidationInfo(DiagnosticBundle.message("change.memory.integer"), myNewValueField);
     }
+    mySaveAndExitAction.setEnabled(info == null);
+    mySaveAction.setEnabled(info == null);
+    return info;
   }
 
   private boolean save() {

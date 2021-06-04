@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl
 
 import com.intellij.BundleBase
@@ -19,7 +19,6 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.MnemonicHelper
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.ex.AnActionListener
 import com.intellij.openapi.actionSystem.impl.ActionButton
@@ -50,6 +49,7 @@ import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.*
+import com.intellij.openapi.util.registry.ExperimentalUI
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.*
@@ -78,7 +78,6 @@ import java.beans.PropertyChangeListener
 import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import java.util.function.Predicate
 import java.util.function.Supplier
 import javax.swing.*
 import javax.swing.event.HyperlinkEvent
@@ -138,6 +137,12 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     fun getRegisteredMutableInfoOrLogError(decorator: InternalDecoratorImpl): WindowInfoImpl {
       val toolWindow = decorator.toolWindow
       return toolWindow.toolWindowManager.getRegisteredMutableInfoOrLogError(toolWindow.id)
+    }
+
+    fun getAdjustedRatio(partSize: Int, totalSize: Int, direction: Int): Float {
+      var ratio = partSize.toFloat() / totalSize
+      ratio += (((partSize.toFloat() + direction) / totalSize) - ratio) / 2
+      return ratio
     }
   }
 
@@ -261,7 +266,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       })
 
       connection.subscribe(AnActionListener.TOPIC, object : AnActionListener {
-        override fun beforeActionPerformed(action: AnAction, dataContext: DataContext, event: AnActionEvent) {
+        override fun beforeActionPerformed(action: AnAction, event: AnActionEvent) {
           process { manager ->
             if (manager.currentState != KeyState.HOLD) {
               manager.resetHoldState()
@@ -448,10 +453,11 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
   private fun ExtensionPointImpl<RegisterToolWindowTaskProvider>.computeExtraToolWindowBeans(): List<RegisterToolWindowTask> {
     val list = mutableListOf<RegisterToolWindowTask>()
     this.processImplementations(true) { supplier, epPluginDescriptor ->
-      if (epPluginDescriptor.pluginId == PluginManagerCore.CORE_ID)
-        for (bean in supplier.get().getTasks(project)) {
+      if (epPluginDescriptor.pluginId == PluginManagerCore.CORE_ID) {
+        for (bean in (supplier.get() ?: return@processImplementations).getTasks(project)) {
           list.addIfNotNull(beanToTask(bean))
         }
+      }
       else {
         LOG.error("Only bundled plugin can define registerToolWindowTaskProvider: $epPluginDescriptor")
       }
@@ -745,17 +751,14 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     }
 
   override val lastActiveToolWindowId: String?
-    get() = getLastActiveToolWindow(condition = null)?.id
+    get() = getLastActiveToolWindows().firstOrNull()?.id
 
-  override fun getLastActiveToolWindow(condition: Predicate<in JComponent>?): ToolWindow? {
+  fun getLastActiveToolWindows(): Iterable<ToolWindow> {
     EDT.assertIsEdt()
-    for (i in 0 until activeStack.persistentSize) {
-      val toolWindow = activeStack.peekPersistent(i).toolWindow
-      if (toolWindow.isAvailable && (condition == null || condition.test(toolWindow.component))) {
-        return toolWindow
-      }
-    }
-    return null
+    return (0 until activeStack.persistentSize).asSequence()
+      .map { activeStack.peekPersistent(it).toolWindow }
+      .filter { it.isAvailable }
+      .asIterable()
   }
 
   /**
@@ -861,7 +864,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     updateStateAndRemoveDecorator(info, entry, dirtyMode = false)
     entry.applyWindowInfo(info.copy())
 
-    if (Registry.`is`("ide.new.stripes.ui")) {
+    if (ExperimentalUI.isNewToolWindowsStripes()) {
       toolWindowPane?.onStripeButtonRemoved(project, entry.toolWindow)
     }
 
@@ -1079,10 +1082,11 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     button.isSelected = windowInfoSnapshot.isVisible
     button.updatePresentation()
     addStripeButton(button, toolWindowPane.getStripeFor((contentFactory as? ToolWindowFactoryEx)?.anchor ?: info.anchor))
-    val comparator = Comparator<ToolWindow> { o1, o2 ->
-      windowInfoComparator.compare((o1 as? ToolWindowImpl)?.windowInfo, (o2 as? ToolWindowImpl)?.windowInfo)
+
+    if (ExperimentalUI.isNewToolWindowsStripes()) {
+      toolWindow.largeStripeAnchor = if (toolWindow.largeStripeAnchor == ToolWindowAnchor.NONE) task.anchor else toolWindow.largeStripeAnchor
     }
-    toolWindowPane.onStripeButtonAdded(project, button.toolWindow, button.toolWindow.largeStripeAnchor, comparator)
+
     // If preloaded info is visible or active then we have to show/activate the installed
     // tool window. This step has sense only for windows which are not in the auto hide
     // mode. But if tool window was active but its mode doesn't allow to activate it again
@@ -1111,6 +1115,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     LOG.debug { "enter: unregisterToolWindow($id)" }
 
     ApplicationManager.getApplication().assertIsDispatchThread()
+    ActivateToolWindowAction.unregister(id)
 
     val entry = idToEntry.remove(id) ?: return
     val toolWindow = entry.toolWindow
@@ -1302,7 +1307,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
   }
 
   override fun notifyByBalloon(options: ToolWindowBalloonShowOptions) {
-    if (Registry.`is`("ide.new.stripes.ui")) {
+    if (ExperimentalUI.isNewToolWindowsStripes()) {
       notifySquareButtonByBalloon(options)
       return
     }
@@ -1339,7 +1344,15 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
 
     val show = Runnable {
       val tracker: PositionTracker<Balloon>
-      if (button.isShowing) {
+      if (entry.toolWindow.isVisible &&
+          (entry.toolWindow.type == ToolWindowType.WINDOWED ||
+           entry.toolWindow.type == ToolWindowType.FLOATING)) {
+        tracker = createPositionTracker(entry.toolWindow.component, ToolWindowAnchor.BOTTOM)
+      }
+      else if (!button.isShowing) {
+        tracker = createPositionTracker(toolWindowPane!!, anchor)
+      }
+      else {
         tracker = object : PositionTracker<Balloon>(button) {
           override fun recalculateLocation(`object`: Balloon): RelativePoint? {
             val otherEntry = idToEntry[options.toolWindowId] ?: return null
@@ -1349,21 +1362,6 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
               return null
             }
             return RelativePoint(stripeButton, Point(stripeButton.bounds.width / 2, stripeButton.height / 2 - 2))
-          }
-        }
-      }
-      else {
-        tracker = object : PositionTracker<Balloon>(toolWindowPane) {
-          override fun recalculateLocation(`object`: Balloon): RelativePoint {
-            val bounds = toolWindowPane!!.bounds
-            val target = StartupUiUtil.getCenterPoint(bounds, Dimension(1, 1))
-            when {
-              ToolWindowAnchor.TOP == anchor -> target.y = 0
-              ToolWindowAnchor.BOTTOM == anchor -> target.y = bounds.height - 3
-              ToolWindowAnchor.LEFT == anchor -> target.x = 0
-              ToolWindowAnchor.RIGHT == anchor -> target.x = bounds.width
-            }
-            return RelativePoint(toolWindowPane!!, target)
           }
         }
       }
@@ -1403,16 +1401,24 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       position.set(Balloon.Position.atLeft)
     }
     val show = Runnable {
-      val tracker = object : PositionTracker<Balloon>(button) {
-        override fun recalculateLocation(`object`: Balloon): RelativePoint? {
-          val otherEntry = idToEntry[options.toolWindowId] ?: return null
-          if (otherEntry.readOnlyWindowInfo.largeStripeAnchor != anchor) {
-            `object`.hide()
-            return null
-          }
+      val tracker: PositionTracker<Balloon>
+      if (entry.toolWindow.isVisible &&
+          (entry.toolWindow.type == ToolWindowType.WINDOWED ||
+           entry.toolWindow.type == ToolWindowType.FLOATING)) {
+        tracker = createPositionTracker(entry.toolWindow.component, ToolWindowAnchor.BOTTOM)
+      }
+      else {
+        tracker = object : PositionTracker<Balloon>(button) {
+          override fun recalculateLocation(`object`: Balloon): RelativePoint? {
+            val otherEntry = idToEntry[options.toolWindowId] ?: return null
+            if (otherEntry.readOnlyWindowInfo.largeStripeAnchor != anchor) {
+              `object`.hide()
+              return null
+            }
 
-          return RelativePoint(button,
-                               Point(if (position.get() == Balloon.Position.atRight) 0 else button.bounds.width, button.height / 2))
+            return RelativePoint(button,
+                                 Point(if (position.get() == Balloon.Position.atRight) 0 else button.bounds.width, button.height / 2))
+          }
         }
       }
       if (!balloon.isDisposed) {
@@ -1425,6 +1431,22 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     }
     else {
       SwingUtilities.invokeLater(show)
+    }
+  }
+
+  private fun createPositionTracker(component: Component, anchor: ToolWindowAnchor): PositionTracker<Balloon> {
+    return object : PositionTracker<Balloon>(component) {
+      override fun recalculateLocation(`object`: Balloon): RelativePoint {
+        val bounds = component.bounds
+        val target = StartupUiUtil.getCenterPoint(bounds, Dimension(1, 1))
+        when {
+          ToolWindowAnchor.TOP == anchor -> target.y = 0
+          ToolWindowAnchor.BOTTOM == anchor -> target.y = bounds.height - 3
+          ToolWindowAnchor.LEFT == anchor -> target.x = 0
+          ToolWindowAnchor.RIGHT == anchor -> target.x = bounds.width
+        }
+        return RelativePoint(component, target)
+      }
     }
   }
 
@@ -1492,7 +1514,6 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     val entry = idToEntry[id]!!
 
     val info = entry.readOnlyWindowInfo
-    if (anchor == info.largeStripeAnchor) return
 
     ApplicationManager.getApplication().assertIsDispatchThread()
     setToolWindowLargeAnchorImpl(entry, info, getRegisteredMutableInfoOrLogError(id), anchor)
@@ -1572,17 +1593,21 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
   }
 
   private fun doSetLargeAnchor(entry: ToolWindowEntry, layoutInfo: WindowInfoImpl, anchor: ToolWindowAnchor) {
-    val toolWindowPane = toolWindowPane!!
-
+    toolWindowPane!!.onStripeButtonAdded(project, entry.toolWindow, anchor, layoutInfo)
     layout.setAnchor(layoutInfo, anchor, -1)
-    layoutInfo.largeStripeAnchor = anchor
+
     // update infos for all window. Actually we have to update only infos affected by setAnchor method
     for (otherEntry in idToEntry.values) {
       val otherInfo = layout.getInfo(otherEntry.id)?.copy() ?: continue
       otherEntry.applyWindowInfo(otherInfo)
     }
+  }
 
-    toolWindowPane.onStripeButtonAdded(project, entry.toolWindow, anchor, Comparator { _, _ -> 0 })
+  fun setOrderOnLargeStripe(id: String, order: Int) {
+    val info = getRegisteredMutableInfoOrLogError(id)
+    info.orderOnLargeStripe = order
+    idToEntry[info.id]!!.applyWindowInfo(info.copy())
+    fireStateChanged()
   }
 
   internal fun setSideTool(id: String, isSplit: Boolean) {
@@ -1981,7 +2006,8 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
    * Spies on IdeToolWindow properties and applies them to the window
    * state.
    */
-  internal fun toolWindowPropertyChanged(toolWindow: ToolWindowImpl, property: ToolWindowProperty) {
+  @ApiStatus.Internal
+  open fun toolWindowPropertyChanged(toolWindow: ToolWindow, property: ToolWindowProperty) {
     val entry = idToEntry[toolWindow.id]
 
     if (property == ToolWindowProperty.AVAILABLE && !toolWindow.isAvailable && entry?.readOnlyWindowInfo?.isVisible == true) {
@@ -2036,34 +2062,30 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       // docked and sliding windows
       val anchor = info.anchor
       var another: InternalDecoratorImpl? = null
+      val wholeSize = toolWindowPane!!.rootPane.size
       if (source.parent is Splitter) {
-        var sizeInSplit = if (anchor.isSplitVertically) source.height.toFloat() else source.width.toFloat()
+        var sizeInSplit = if (anchor.isSplitVertically) source.height else source.width
         val splitter = source.parent as Splitter
         if (splitter.secondComponent === source) {
-          sizeInSplit += splitter.dividerWidth.toFloat()
+          sizeInSplit += splitter.dividerWidth
           another = splitter.firstComponent as InternalDecoratorImpl
         }
         else {
           another = splitter.secondComponent as InternalDecoratorImpl
         }
-        if (anchor.isSplitVertically) {
-          info.sideWeight = sizeInSplit / splitter.height
-        }
-        else {
-          info.sideWeight = sizeInSplit / splitter.width
-        }
+        info.sideWeight = getAdjustedRatio(sizeInSplit,
+                                           if (anchor.isSplitVertically) splitter.height else splitter.width,
+                                           if (splitter.secondComponent === source) -1 else 1)
       }
 
-      val size = toolWindowPane!!.size
-      var paneWeight = if (anchor.isHorizontal) source.height.toFloat() / size.height else source.width.toFloat() / size.width
+      val paneWeight = getAdjustedRatio(if (anchor.isHorizontal) source.height else source.width,
+                                        if (anchor.isHorizontal) wholeSize.height else wholeSize.width, 1)
       info.weight = paneWeight
-      if (another != null && anchor.isSplitVertically) {
-        paneWeight = if (anchor.isHorizontal) another.height.toFloat() / size.height else another.width.toFloat() / size.width
+      if (another != null) {
         getRegisteredMutableInfoOrLogError(another.toolWindow.id).weight = paneWeight
       }
     }
   }
-
   private fun focusToolWindowByDefault() {
     var toFocus: ToolWindowEntry? = null
     for (each in activeStack.stack) {
@@ -2225,7 +2247,7 @@ private const val ACTIVE_ATTR_VALUE = "active"
 private const val LAYOUT_TO_RESTORE = "layout-to-restore"
 private const val RECENT_TW_TAG = "recentWindows"
 
-internal enum class ToolWindowProperty {
+enum class ToolWindowProperty {
   TITLE, ICON, AVAILABLE, STRIPE_TITLE
 }
 
@@ -2291,5 +2313,6 @@ enum class ToolWindowEventSource {
   ToolWindowsWidget, RemoveStripeButtonAction,
   HideOnShowOther, HideSide, CloseFromSwitcher,
   ActivateActionMenu, ActivateActionKeyboardShortcut, ActivateActionGotoAction, ActivateActionOther,
-  CloseAction, HideButton, HideToolWindowAction, HideSideWindowsAction, HideAllWindowsAction, JumpToLastWindowAction, ToolWindowSwitcher
+  CloseAction, HideButton, HideToolWindowAction, HideSideWindowsAction, HideAllWindowsAction, JumpToLastWindowAction, ToolWindowSwitcher,
+  InspectionsWidget
 }

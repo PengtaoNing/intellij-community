@@ -9,6 +9,7 @@ import com.intellij.openapi.ui.Queryable;
 import com.intellij.openapi.ui.Splitter;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeGlassPane;
 import com.intellij.openapi.wm.ToolWindowAnchor;
@@ -18,6 +19,7 @@ import com.intellij.openapi.wm.impl.content.ToolWindowContentUi;
 import com.intellij.ui.ComponentWithMnemonics;
 import com.intellij.ui.Gray;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.paint.LinePainter2D;
 import com.intellij.util.MathUtil;
@@ -53,6 +55,7 @@ public final class InternalDecoratorImpl extends InternalDecorator implements Qu
   static final String HIDE_ACTIVE_WINDOW_ACTION_ID = "HideActiveWindow";
 
   private final ToolWindowHeader header;
+  private final Wrapper notificationHeader = new Wrapper();
 
   InternalDecoratorImpl(@NotNull ToolWindowImpl toolWindow, @NotNull ToolWindowContentUi contentUi, @NotNull JComponent decoratorChild) {
     setLayout(new BorderLayout());
@@ -79,7 +82,7 @@ public final class InternalDecoratorImpl extends InternalDecorator implements Qu
     installFocusTraversalPolicy(this, new LayoutFocusTraversalPolicy());
 
     dividerAndHeader.setOpaque(false);
-    dividerAndHeader.add(header, BorderLayout.SOUTH);
+    dividerAndHeader.add(JBUI.Panels.simplePanel(header).addToBottom(notificationHeader), BorderLayout.SOUTH);
     add(dividerAndHeader, BorderLayout.NORTH);
     if (SystemInfo.isMac) {
       setBackground(new JBColor(Gray._200, Gray._90));
@@ -305,20 +308,39 @@ public final class InternalDecoratorImpl extends InternalDecorator implements Qu
     return toolWindow.getId();
   }
 
+  public void setHeaderComponent(@Nullable JComponent notification) {
+    notificationHeader.setContent(notification);
+  }
+
+  @Nullable
+  public JComponent getHeaderComponent() {
+    JComponent component = notificationHeader.getTargetComponent();
+    return component != notificationHeader ? component : null;
+  }
+
+  @Nullable
+  public Rectangle getHeaderScreenBounds() {
+    if (!header.isShowing()) return null;
+    Rectangle bounds = header.getBounds();
+    bounds.setLocation(header.getLocationOnScreen());
+    return bounds;
+  }
+
   @Override
   public void addNotify() {
     super.addNotify();
-
-    JPanel divider = this.divider;
-    if (divider != null) {
-      IdeGlassPane glassPane = (IdeGlassPane)getRootPane().getGlassPane();
-      if (disposable != null) {
-        Disposer.dispose(disposable);
+    if (!Registry.is("ide.new.tool.window.dnd")) {
+      JPanel divider = this.divider;
+      if (divider != null) {
+        IdeGlassPane glassPane = (IdeGlassPane)getRootPane().getGlassPane();
+        if (disposable != null) {
+          Disposer.dispose(disposable);
+        }
+        disposable = Disposer.newDisposable();
+        ResizeOrMoveDocketToolWindowMouseListener listener = new ResizeOrMoveDocketToolWindowMouseListener(divider, glassPane, this);
+        glassPane.addMouseMotionPreprocessor(listener, disposable);
+        glassPane.addMousePreprocessor(listener, disposable);
       }
-      disposable = Disposer.newDisposable();
-      ResizeOrMoveDocketToolWindowMouseListener listener = new ResizeOrMoveDocketToolWindowMouseListener(divider, glassPane, this);
-      glassPane.addMouseMotionPreprocessor(listener, disposable);
-      glassPane.addMousePreprocessor(listener, disposable);
     }
   }
 
@@ -353,7 +375,7 @@ public final class InternalDecoratorImpl extends InternalDecorator implements Qu
       }
 
       SwingUtilities.convertPointFromScreen(point, divider);
-      return Math.abs(decorator.toolWindow.getWindowInfo().getAnchor().isHorizontal() ? point.y : point.x) < 6;
+      return Math.abs(decorator.toolWindow.getWindowInfo().getAnchor().isHorizontal() ? point.y : point.x) < ToolWindowsPane.HEADER_RESIZE_WIDTH;
     }
 
     private void updateCursor(@NotNull MouseEvent event, boolean isInDragZone) {
@@ -390,7 +412,7 @@ public final class InternalDecoratorImpl extends InternalDecorator implements Qu
       if (!isDragging) {
         return;
       }
-
+      //"Undock" mode only, for "Dock" mode processing see com.intellij.openapi.wm.impl.content.ToolWindowContentUi.initMouseListeners
       ToolWindowAnchor anchor = decorator.toolWindow.getAnchor();
       Container windowPane = decorator.getParent();
       Point lastPoint = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), windowPane);

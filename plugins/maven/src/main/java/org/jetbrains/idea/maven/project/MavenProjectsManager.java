@@ -5,8 +5,6 @@ import com.intellij.build.BuildProgressListener;
 import com.intellij.build.SyncViewManager;
 import com.intellij.configurationStore.SettingsSavingComponentJavaAdapter;
 import com.intellij.execution.wsl.WSLDistribution;
-import com.intellij.ide.impl.TrustChangeNotifier;
-import com.intellij.ide.impl.TrustedProjects;
 import com.intellij.ide.startup.StartupManagerEx;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
@@ -47,8 +45,6 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.PathKt;
 import com.intellij.util.ui.update.Update;
 import com.intellij.workspaceModel.storage.WorkspaceEntityStorageBuilder;
-import gnu.trove.THashMap;
-import gnu.trove.THashSet;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -343,7 +339,7 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
 
   private void applyTreeToState() {
     myState.originalFiles = myProjectsTree.getManagedFilesPaths();
-    myState.ignoredFiles = new THashSet<>(myProjectsTree.getIgnoredFilesPaths());
+    myState.ignoredFiles = new HashSet<>(myProjectsTree.getIgnoredFilesPaths());
     myState.ignoredPathMasks = myProjectsTree.getIgnoredFilesPatterns();
   }
 
@@ -430,6 +426,7 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
       }
     });
   }
+
   private void listenForProjectsTreeChanges() {
     myProjectsTree.addListener(new MavenProjectsTree.Listener() {
       @Override
@@ -453,7 +450,7 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
         }
 
         // resolve updated, theirs dependents, and dependents of deleted
-        Set<MavenProject> toResolve = new THashSet<>(updatedProjects);
+        Set<MavenProject> toResolve = new HashSet<>(updatedProjects);
         toResolve.addAll(myProjectsTree.getDependentProjects(ContainerUtil.concat(updatedProjects, deleted)));
 
         // do not try to resolve projects with syntactic errors
@@ -549,12 +546,12 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
 
       myWatcher.stop();
 
-    myReadingProcessor.stop();
-    myResolvingProcessor.stop();
-    myPluginsResolvingProcessor.stop();
-    myFoldersResolvingProcessor.stop();
-    myArtifactsDownloadingProcessor.stop();
-    myPostProcessor.stop();
+      myReadingProcessor.stop();
+      myResolvingProcessor.stop();
+      myPluginsResolvingProcessor.stop();
+      myFoldersResolvingProcessor.stop();
+      myArtifactsDownloadingProcessor.stop();
+      myPostProcessor.stop();
       mySaveQueue.flush();
 
       if (isUnitTestMode()) {
@@ -834,7 +831,7 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public Set<MavenRemoteRepository> getRemoteRepositories() {
-    Set<MavenRemoteRepository> result = new THashSet<>();
+    Set<MavenRemoteRepository> result = new HashSet<>();
     for (MavenProject each : getProjects()) {
       result.addAll(each.getRemoteRepositories());
     }
@@ -1328,7 +1325,7 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   private Map<VirtualFile, Module> getFileToModuleMapping(MavenModelsProvider modelsProvider) {
-    Map<VirtualFile, Module> result = new THashMap<>();
+    Map<VirtualFile, Module> result = new HashMap<>();
     for (Module each : modelsProvider.getModules()) {
       VirtualFile f = findPomFile(each, modelsProvider);
       if (f != null) result.put(f, each);
@@ -1425,4 +1422,6 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
       manager.runWhenFullyOpen(() -> consumer.accept(manager));
     }
   }
+
+
 }

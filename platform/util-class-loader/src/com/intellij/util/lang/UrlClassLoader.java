@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.lang;
 
 import com.intellij.ReviseWhenPortedToJDK;
@@ -23,6 +23,7 @@ import java.nio.file.Paths;
 import java.security.ProtectionDomain;
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -30,15 +31,17 @@ import java.util.function.Predicate;
  * Should be constructed using {@link #build()} method.
  */
 public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataConsumer {
-  protected static final boolean USE_PARALLEL_LOADING = Boolean.parseBoolean(System.getProperty("use.parallel.class.loading", "true"));
-  private static final boolean isParallelCapable = USE_PARALLEL_LOADING && registerAsParallelCapable();
+  private static final boolean isParallelCapable = registerAsParallelCapable();
 
   private static final ThreadLocal<Boolean> skipFindingResource = new ThreadLocal<>();
 
   private final List<Path> files;
   protected final ClassPath classPath;
-  private final ClassLoadingLocks classLoadingLocks;
+  private final ClassLoadingLocks<String> classLoadingLocks;
   private final boolean isBootstrapResourcesAllowed;
+
+  protected final @NotNull ClassPath.ClassDataConsumer classDataConsumer =
+    ClassPath.recordLoadingTime ? new ClassPath.MeasuringClassDataConsumer(this) : this;
 
   /**
    * Called by the VM to support dynamic additions to the class path.
@@ -143,8 +146,15 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   protected UrlClassLoader(@NotNull UrlClassLoader.Builder builder,
-                           @Nullable ClassPath.ResourceFileFactory resourceFileFactory,
+                           @Nullable Function<Path, ResourceFile> resourceFileFactory,
                            boolean isParallelCapable) {
+    this(builder, resourceFileFactory, isParallelCapable, false);
+  }
+
+  protected UrlClassLoader(@NotNull UrlClassLoader.Builder builder,
+                           @Nullable Function<Path, ResourceFile> resourceFileFactory,
+                           boolean isParallelCapable,
+                           boolean isMimicJarUrlConnectionNeeded) {
     super(builder.parent);
 
     files = builder.files;
@@ -154,10 +164,19 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
       urlsWithProtectionDomain = Collections.emptySet();
     }
 
-    classPath = new ClassPath(files, urlsWithProtectionDomain, builder, resourceFileFactory, this);
+    classPath = new ClassPath(files, urlsWithProtectionDomain, builder, resourceFileFactory, isMimicJarUrlConnectionNeeded);
 
     isBootstrapResourcesAllowed = builder.isBootstrapResourcesAllowed;
-    classLoadingLocks = isParallelCapable ? new ClassLoadingLocks() : null;
+    classLoadingLocks = isParallelCapable ? new ClassLoadingLocks<>() : null;
+  }
+
+  protected UrlClassLoader(@NotNull List<Path> files, @NotNull ClassPath classPath) {
+    super(null);
+
+    this.files = files;
+    this.classPath = classPath;
+    isBootstrapResourcesAllowed = false;
+    classLoadingLocks = new ClassLoadingLocks<>();
   }
 
   /** @deprecated adding URLs to a classloader at runtime could lead to hard-to-debug errors */
@@ -197,7 +216,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   protected Class<?> findClass(@NotNull String name) throws ClassNotFoundException {
     Class<?> clazz;
     try {
-      clazz = classPath.findClass(name);
+      clazz = classPath.findClass(name, classDataConsumer);
     }
     catch (IOException e) {
       throw new ClassNotFoundException(name, e);
@@ -361,7 +380,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
           return c;
         }
       }
-      return classPath.findClass(name);
+      return classPath.findClass(name, classDataConsumer);
     }
   }
 
@@ -533,12 +552,11 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     private static final boolean isClassPathIndexEnabledGlobalValue = Boolean.parseBoolean(System.getProperty("idea.classpath.index.enabled", "true"));
 
     List<Path> files = Collections.emptyList();
-    Set<Path> pathsWithProtectionDomain;
+    @Nullable Set<Path> pathsWithProtectionDomain;
     ClassLoader parent;
     boolean lockJars = true;
     boolean useCache;
     boolean isClassPathIndexEnabled;
-    boolean preloadJarContents = true;
     boolean isBootstrapResourcesAllowed;
     boolean errorOnMissingJar = true;
     @Nullable CachePoolImpl cachePool;
@@ -629,7 +647,6 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     }
 
     public @NotNull UrlClassLoader.Builder noPreload() {
-      preloadJarContents = false;
       return this;
     }
 
@@ -648,9 +665,12 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     }
 
     public @NotNull UrlClassLoader.Builder autoAssignUrlsWithProtectionDomain() {
-      Set<Path> result = new HashSet<>();
+      Set<Path> result = null;
       for (Path path : files) {
         if (isUrlNeedsProtectionDomain(path)) {
+          if (result == null) {
+            result = new HashSet<>();
+          }
           result.add(path);
         }
       }

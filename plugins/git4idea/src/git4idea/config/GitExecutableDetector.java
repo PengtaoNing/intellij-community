@@ -5,6 +5,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil;
 import com.intellij.execution.wsl.WSLDistribution;
 import com.intellij.execution.wsl.WSLUtil;
+import com.intellij.execution.wsl.WslDistributionManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
@@ -51,6 +52,12 @@ public class GitExecutableDetector {
 
   @Nullable
   public String detect(@Nullable WSLDistribution distribution) {
+    synchronized (DETECTED_EXECUTABLE_LOCK) {
+      if (myDetectionComplete) {
+        return getExecutable(distribution);
+      }
+    }
+
     return runUnderProgressIfNeeded(null, GitBundle.message("git.executable.detect.progress.title"), () -> {
       synchronized (DETECTED_EXECUTABLE_LOCK) {
         if (!myDetectionComplete) {
@@ -176,7 +183,7 @@ public class GitExecutableDetector {
   private void detectAvailableWsl() {
     if (!GitExecutableManager.supportWslExecutable()) return;
 
-    List<WSLDistribution> distributions = WSLUtil.getAvailableDistributions();
+    List<WSLDistribution> distributions = WslDistributionManager.getInstance().getInstalledDistributions();
     for (WSLDistribution distribution : distributions) {
       String path = checkWslDistribution(distribution);
       if (path != null) myWslExecutables.put(distribution, path);

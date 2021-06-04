@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.editor.actions;
 
@@ -13,6 +13,7 @@ import com.intellij.openapi.editor.impl.EditorImpl;
 import com.intellij.openapi.editor.impl.FoldingModelImpl;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.util.DocumentUtil;
@@ -102,6 +103,47 @@ public final class EditorActionUtil {
   public static boolean shouldUseSmartTabs(Project project, @NotNull Editor editor) {
     if (!(editor instanceof EditorEx)) return false;
     return CodeStyle.getIndentOptions(project, editor.getDocument()).SMART_TABS;
+  }
+
+  /**
+   * Selects the entire lines covering the current selection, if any.
+   * If there's no selection, selects a single line of text at the caret position.
+   * Because the resulting selection always includes the line ending character,
+   * repeated invocations of this method extend the selection to include each next line one by one.
+   */
+  public static void selectEntireLines(@NotNull Caret caret) {
+    selectEntireLines(caret, false);
+  }
+
+  /**
+   * Selects the entire lines covering the current selection, if any.
+   * If there's no selection, or 'resetToSingleLineAtCaret' is true, selects a single line of text at the caret position.
+   * Unless 'resetToSingleLineAtCaret' is set, and because the resulting selection always includes the line ending character,
+   * repeated invocations of this method extend the selection to include each next line one by one.
+   *
+   * @param resetToSingleLineAtCaret discard the the current selection, if any,
+   *                                 and select just a single line at the caret position.
+   */
+  public static void selectEntireLines(@NotNull Caret caret, boolean resetToSingleLineAtCaret) {
+    Editor editor = caret.getEditor();
+    int lineNumber = caret.getLogicalPosition().line;
+    Document document = editor.getDocument();
+    if (lineNumber >= document.getLineCount()) {
+      return;
+    }
+
+    Pair<LogicalPosition, LogicalPosition> lines =
+      EditorUtil.calcSurroundingRange(editor,
+                                      resetToSingleLineAtCaret ? caret.getVisualPosition() : caret.getSelectionStartPosition(),
+                                      resetToSingleLineAtCaret ? caret.getVisualPosition() : caret.getSelectionEndPosition());
+    LogicalPosition lineStart = lines.first;
+    LogicalPosition nextLineStart = lines.second;
+
+    int start = editor.logicalPositionToOffset(lineStart);
+    int end = editor.logicalPositionToOffset(nextLineStart);
+
+    editor.getScrollingModel().scrollToCaret(ScrollType.RELATIVE);
+    caret.setSelection(start, end);
   }
 
   @NotNull
@@ -272,8 +314,7 @@ public final class EditorActionUtil {
 
   @Nullable
   private static HighlighterIterator createHighlighterIteratorAtOffset(@NotNull Editor editor, int offset) {
-    if (!(editor instanceof EditorEx)) return null;
-    return ((EditorEx)editor).getHighlighter().createIterator(offset);
+    return editor.getHighlighter().createIterator(offset);
   }
 
   private static boolean isLexemeBoundary(@Nullable IElementType leftTokenType,
@@ -352,13 +393,12 @@ public final class EditorActionUtil {
    * Finds out whether there's a boundary between two lexemes of different type at given offset.
    */
   public static boolean isLexemeBoundary(@NotNull Editor editor, int offset) {
-    if (!(editor instanceof EditorEx) ||
-        offset <= 0 || offset >= editor.getDocument().getTextLength() ||
+    if (offset <= 0 || offset >= editor.getDocument().getTextLength() ||
         DocumentUtil.isInsideSurrogatePair(editor.getDocument(), offset) ||
         isBetweenWhitespaces(editor.getDocument().getCharsSequence(), offset)) {
       return false;
     }
-    EditorHighlighter highlighter = ((EditorEx)editor).getHighlighter();
+    EditorHighlighter highlighter = editor.getHighlighter();
     HighlighterIterator it = highlighter.createIterator(offset);
     return retreatTokenOnBoundary(it, editor.getDocument().getCharsSequence(), offset);
   }
@@ -441,7 +481,7 @@ public final class EditorActionUtil {
     }
 
     setupSelection(editor, isWithSelection, selectionStart, blockSelectionStart);
-    EditorModificationUtil.scrollToCaret(editor);
+    EditorModificationUtilEx.scrollToCaret(editor);
   }
 
   private static void moveCaretToStartOfSoftWrappedLine(@NotNull Editor editor, VisualPosition currentVisual) {
@@ -552,7 +592,7 @@ public final class EditorActionUtil {
       LogicalPosition pos = new LogicalPosition(lineNumber, 0);
       editor.getCaretModel().moveToLogicalPosition(pos);
       setupSelection(editor, isWithSelection, selectionStart, blockSelectionStart);
-      EditorModificationUtil.scrollToCaret(editor);
+      EditorModificationUtilEx.scrollToCaret(editor);
       return;
     }
     VisualPosition currentVisualCaret = editor.getCaretModel().getVisualPosition();
@@ -600,7 +640,7 @@ public final class EditorActionUtil {
       }
     }
 
-    EditorModificationUtil.scrollToCaret(editor);
+    EditorModificationUtilEx.scrollToCaret(editor);
 
     setupSelection(editor, isWithSelection, selectionStart, blockSelectionStart);
   }
@@ -645,7 +685,7 @@ public final class EditorActionUtil {
       }
     }
     caretModel.moveToOffset(newOffset);
-    EditorModificationUtil.scrollToCaret(editor);
+    EditorModificationUtilEx.scrollToCaret(editor);
 
     setupSelection(editor, isWithSelection, selectionStart, blockSelectionStart);
   }
@@ -739,7 +779,7 @@ public final class EditorActionUtil {
     else {
       editor.getCaretModel().moveToOffset(newOffset);
     }
-    EditorModificationUtil.scrollToCaret(editor);
+    EditorModificationUtilEx.scrollToCaret(editor);
 
     setupSelection(editor, isWithSelection, selectionStart, blockSelectionStart);
   }
@@ -905,6 +945,6 @@ public final class EditorActionUtil {
       caret.removeSelection();
     }
     caret.moveToOffset(offset);
-    EditorModificationUtil.scrollToCaret(caret.getEditor());
+    EditorModificationUtilEx.scrollToCaret(caret.getEditor());
   }
 }

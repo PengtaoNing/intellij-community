@@ -1,15 +1,13 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.indexing.impl.storage
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.util.indexing.StorageException
-import com.intellij.util.io.DataExternalizer
-import com.intellij.util.io.DataInputOutputUtil
-import com.intellij.util.io.IOUtil
-import com.intellij.util.io.PagedFileStorage
+import com.intellij.util.io.*
 import com.intellij.util.io.keyStorage.AppendableObjectStorage
 import com.intellij.util.io.keyStorage.AppendableStorageBackedByResizableMappedFile
 import it.unimi.dsi.fastutil.ints.*
@@ -18,7 +16,7 @@ import java.io.*
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.*
 import kotlin.math.abs
 
 interface AbstractIntLog : Closeable, Flushable {
@@ -41,7 +39,9 @@ interface AbstractIntLog : Closeable, Flushable {
   fun clear()
 }
 
-class IntLog @Throws(IOException::class) constructor(private val baseStorageFile: Path, compact: Boolean) : AbstractIntLog {
+class IntLog @Throws(IOException::class) constructor(private val baseStorageFile: Path,
+                                                     compact: Boolean,
+                                                     private val storageLockContext: StorageLockContext? = null) : AbstractIntLog {
   companion object {
     private val LOG = logger<IntLog>()
   }
@@ -61,12 +61,19 @@ class IntLog @Throws(IOException::class) constructor(private val baseStorageFile
     try {
       val l = System.currentTimeMillis()
       doForce()
-      val uniqueInputs = IntOpenHashSet()
-      val uselessRecords = AtomicInteger()
-      withLock(true) {
+      val uniqueInputs = BitSet()
+      var uselessRecords = 0
+      var usefulRecords = 0
+      val isReadAction = ApplicationManager.getApplication().isReadAccessAllowed
+
+      if (isReadAction) {
         ProgressManager.checkCanceled()
+      }
+      withLock(true) {
         if (!myKeyHashToVirtualFileMapping.processAll { key ->
-            ProgressManager.checkCanceled()
+            if (isReadAction) {
+              ProgressManager.checkCanceled()
+            }
             val inputId = key[1]
             val data = key[0]
 
@@ -74,8 +81,13 @@ class IntLog @Throws(IOException::class) constructor(private val baseStorageFile
               return@processAll false
             }
 
-            if (!uniqueInputs.add(inputId)) {
-              uselessRecords.incrementAndGet()
+            val isPresent = uniqueInputs.get(inputId)
+            if (isPresent) {
+              uselessRecords++
+            }
+            else {
+              uniqueInputs.set(inputId)
+              usefulRecords++
             }
 
             true
@@ -84,7 +96,7 @@ class IntLog @Throws(IOException::class) constructor(private val baseStorageFile
         }
         true
       }
-      if (uselessRecords.get() >= uniqueInputs.size) {
+      if (uselessRecords >= usefulRecords) {
         setRequiresCompaction()
       }
 
@@ -122,7 +134,7 @@ class IntLog @Throws(IOException::class) constructor(private val baseStorageFile
 
   private fun openLog() = AppendableStorageBackedByResizableMappedFile(getDataFile(),
                                                                        4096,
-                                                                       null,
+                                                                       storageLockContext,
                                                                        PagedFileStorage.MB,
                                                                        true,
                                                                        IntPairInArrayKeyDescriptor)
@@ -213,7 +225,7 @@ class IntLog @Throws(IOException::class) constructor(private val baseStorageFile
       val oldDataFile = getDataFile()
       val oldMapping = AppendableStorageBackedByResizableMappedFile(oldDataFile,
                                                                     0,
-                                                                    null,
+                                                                    storageLockContext,
                                                                     PagedFileStorage.MB,
                                                                     true,
                                                                     IntPairInArrayKeyDescriptor)
@@ -242,7 +254,7 @@ class IntLog @Throws(IOException::class) constructor(private val baseStorageFile
       val newDataFile = oldDataFile.resolveSibling(newDataFileName)
       val newMapping = AppendableStorageBackedByResizableMappedFile(newDataFile,
                                                                     32 * 2 * data.size,
-                                                                    null,
+                                                                    storageLockContext,
                                                                     PagedFileStorage.MB,
                                                                     true,
                                                                     IntPairInArrayKeyDescriptor)

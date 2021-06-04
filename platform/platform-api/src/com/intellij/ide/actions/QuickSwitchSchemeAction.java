@@ -30,7 +30,7 @@ public abstract class QuickSwitchSchemeAction extends AnAction implements DumbAw
     return EmptyIcon.create(AllIcons.Actions.Forward.getIconWidth(), AllIcons.Actions.Forward.getIconHeight());
   });
 
-  protected String myActionPlace = ActionPlaces.UNKNOWN;
+  protected String myActionPlace;
 
   private final boolean myShowPopupWithNoActions;
 
@@ -79,7 +79,7 @@ public abstract class QuickSwitchSchemeAction extends AnAction implements DumbAw
   }
 
   protected JBPopupFactory.ActionSelectionAid getAidMethod() {
-    return JBPopupFactory.ActionSelectionAid.ALPHA_NUMBERING;
+    return JBPopupFactory.ActionSelectionAid.NUMBERING;
   }
 
   @Nls(capitalization = Nls.Capitalization.Title)

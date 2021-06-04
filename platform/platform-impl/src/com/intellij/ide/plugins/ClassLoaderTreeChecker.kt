@@ -10,7 +10,7 @@ private val LOG = logger<ClassLoaderTreeChecker>()
 internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPluginDescriptorImpl,
                                       private val classLoaders: WeakList<PluginClassLoader>) {
   fun checkThatClassLoaderNotReferencedByPluginClassLoader() {
-    if (!ClassLoaderConfigurationData.SEPARATE_CLASSLOADER_FOR_SUB || unloadedMainDescriptor.classLoader !is PluginClassLoader) {
+    if (unloadedMainDescriptor.classLoader !is PluginClassLoader) {
       return
     }
 
@@ -19,7 +19,7 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
 
   private fun checkThatClassLoaderNotReferencedByPluginClassLoader(descriptor: IdeaPluginDescriptorImpl) {
     checkThatClassloaderNotReferenced(descriptor)
-    for (dependency in (descriptor.pluginDependencies ?: return)) {
+    for (dependency in descriptor.pluginDependencies) {
       checkThatClassLoaderNotReferencedByPluginClassLoader(dependency.subDescriptor ?: continue)
     }
   }
@@ -32,11 +32,12 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
         LOG.error("$classLoader must be unloaded but still referenced")
       }
 
-      if (classLoader.pluginId === unloadedMainDescriptor.pluginId && classLoader.pluginDescriptor === descriptor) {
+      if (classLoader.pluginId == unloadedMainDescriptor.pluginId && classLoader.pluginDescriptor === descriptor) {
         LOG.error("Classloader of $descriptor must be nullified")
       }
     }
 
+    @Suppress("TestOnlyProblems")
     val parents = classLoader._getParents()
 
     for (unloadedClassLoader in classLoaders) {
@@ -46,7 +47,7 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
     }
 
     for (parent in parents) {
-      if (parent is PluginClassLoader && parent.pluginId === unloadedMainDescriptor.pluginId) {
+      if (parent is PluginClassLoader && parent.pluginId == unloadedMainDescriptor.pluginId) {
         LOG.error("$classLoader references via parents $parent that must be unloaded")
       }
     }

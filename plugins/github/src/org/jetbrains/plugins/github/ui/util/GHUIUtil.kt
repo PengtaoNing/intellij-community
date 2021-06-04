@@ -2,6 +2,8 @@
 package org.jetbrains.plugins.github.ui.util
 
 import com.intellij.UtilBundle
+import com.intellij.collaboration.async.CompletableFutureUtil.successOnEdt
+import com.intellij.collaboration.ui.CollaborationToolsUIUtil
 import com.intellij.openapi.application.ApplicationBundle
 import com.intellij.openapi.editor.impl.view.FontLayoutService
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -21,7 +23,7 @@ import com.intellij.ui.speedSearch.SpeedSearch
 import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.*
 import com.intellij.util.ui.components.BorderLayoutPanel
-import icons.VcsCodeReviewIcons
+import icons.CollaborationToolsIcons
 import org.jetbrains.plugins.github.GithubIcons
 import org.jetbrains.plugins.github.api.GHRepositoryCoordinates
 import org.jetbrains.plugins.github.api.data.GHLabel
@@ -32,7 +34,6 @@ import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestState
 import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.ui.avatars.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.util.CollectionDelta
-import org.jetbrains.plugins.github.util.successOnEdt
 import java.awt.Color
 import java.awt.Component
 import java.awt.Cursor
@@ -49,9 +50,9 @@ object GHUIUtil {
   fun getPullRequestStateIcon(state: GHPullRequestState, isDraft: Boolean): Icon =
     if (isDraft) GithubIcons.PullRequestDraft
     else when (state) {
-      GHPullRequestState.CLOSED -> VcsCodeReviewIcons.PullRequestClosed
+      GHPullRequestState.CLOSED -> CollaborationToolsIcons.PullRequestClosed
       GHPullRequestState.MERGED -> GithubIcons.PullRequestMerged
-      GHPullRequestState.OPEN -> VcsCodeReviewIcons.PullRequestOpen
+      GHPullRequestState.OPEN -> CollaborationToolsIcons.PullRequestOpen
     }
 
   @NlsSafe
@@ -134,33 +135,12 @@ object GHUIUtil {
     : CompletableFuture<CollectionDelta<T>> {
 
     val listModel = CollectionListModel<SelectableWrapper<T>>()
-    val list = JBList<SelectableWrapper<T>>().apply {
+    val list = JBList(listModel).apply {
       visibleRowCount = 7
       isFocusable = false
       selectionMode = ListSelectionModel.SINGLE_SELECTION
     }
     list.cellRenderer = cellRenderer
-
-    val speedSearch = SpeedSearch()
-    val filteringListModel = NameFilteringListModel<SelectableWrapper<T>>(listModel, { cellRenderer.getText(it.value) },
-                                                                          speedSearch::shouldBeShowing, { speedSearch.filter ?: "" })
-    list.model = filteringListModel
-
-    speedSearch.addChangeListener {
-      val prevSelection = list.selectedValue // save to restore the selection on filter drop
-      filteringListModel.refilter()
-      if (filteringListModel.size > 0) {
-        val fullMatchIndex = if (speedSearch.isHoldingFilter) filteringListModel.closestMatchIndex
-        else filteringListModel.getElementIndex(prevSelection)
-        if (fullMatchIndex != -1) {
-          list.selectedIndex = fullMatchIndex
-        }
-
-        if (filteringListModel.size <= list.selectedIndex || !filteringListModel.contains(list.selectedValue)) {
-          list.selectedIndex = 0
-        }
-      }
-    }
 
     val scrollPane = ScrollPaneFactory.createScrollPane(list, true).apply {
       viewport.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -171,17 +151,12 @@ object GHUIUtil {
       border = IdeBorderFactory.createBorder(SideBorder.BOTTOM)
       UIUtil.setBackgroundRecursively(this, UIUtil.getListBackground())
       textEditor.border = JBUI.Borders.empty()
-      //focus dark magic, otherwise focus shifts to searchfield panel
-      isFocusable = false
-      addDocumentListener(object : DocumentAdapter() {
-        override fun textChanged(e: DocumentEvent) {
-          speedSearch.updatePattern(text)
-        }
-      })
+    }
+    CollaborationToolsUIUtil.attachSearch(list, searchField) {
+      cellRenderer.getText(it.value)
     }
 
-    val panel = JBUI.Panels.simplePanel(scrollPane).addToTop(searchField)
-    ScrollingUtil.installActions(list, panel)
+    val panel = JBUI.Panels.simplePanel(scrollPane).addToTop(searchField.textEditor)
     ListUtil.installAutoSelectOnMouseMove(list)
 
     fun toggleSelection() {

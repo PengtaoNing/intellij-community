@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.analysis.problemsView.toolWindow
 
 import com.intellij.analysis.problemsView.FileProblem
@@ -13,7 +13,7 @@ import com.intellij.ui.tree.LeafState
 import com.intellij.util.ui.tree.TreeUtil
 import javax.swing.tree.TreePath
 
-internal abstract class Root(val panel: ProblemsViewPanel)
+abstract class Root(val panel: ProblemsViewPanel)
   : Node(panel.project), ProblemsCollector, Disposable {
 
   private val nodes = mutableMapOf<VirtualFile, FileNode>()
@@ -39,7 +39,11 @@ internal abstract class Root(val panel: ProblemsViewPanel)
 
   open fun getChildren(file: VirtualFile): Collection<Node> {
     val node = synchronized(nodes) { nodes[file] } ?: return emptyList()
-    return getFileProblems(node.file).map { ProblemNode(node, it) }
+    return getChildren(node)
+  }
+
+  open fun getChildren(node: FileNode): Collection<Node> {
+    return getFileProblems(node.file).map { ProblemNode(node, node.file, it) }
   }
 
   override fun problemAppeared(problem: Problem) = when (problem) {
@@ -87,7 +91,7 @@ internal abstract class Root(val panel: ProblemsViewPanel)
     }
   }
 
-  private fun structureChanged(path: TreePath? = null) {
+  open fun structureChanged(path: TreePath? = null) {
     panel.updateToolWindowContent()
     panel.treeModel.structureChanged(path)
   }

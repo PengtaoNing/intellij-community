@@ -16,6 +16,11 @@ import org.jdom.Element
 import org.jetbrains.jps.model.serialization.JDomSerializationUtil
 import org.jetbrains.jps.util.JpsPathUtil
 
+private val MODULE_OPTIONS_TO_CHECK = setOf(
+  "externalSystemModuleVersion", "linkedProjectPath", "linkedProjectId", "rootProjectPath", "externalSystemModuleGroup",
+  "externalSystemModuleType"
+)
+
 internal class ExternalModuleImlFileEntitiesSerializer(modulePath: ModulePath,
                                                        fileUrl: VirtualFileUrl,
                                                        virtualFileManager: VirtualFileUrlManager,
@@ -48,6 +53,7 @@ internal class ExternalModuleImlFileEntitiesSerializer(modulePath: ModulePath,
                                          externalSystemOptions: Map<String?, String?>,
                                          externalSystemId: String?,
                                          entitySource: EntitySource) {
+    if (!shouldCreateExternalSystemModuleOptions(externalSystemId, externalSystemOptions, MODULE_OPTIONS_TO_CHECK)) return
     val optionsEntity = builder.getOrCreateExternalSystemModuleOptions(module, entitySource)
     builder.modifyEntity(ModifiableExternalSystemModuleOptionsEntity::class.java, optionsEntity) {
       externalSystem = externalSystemId
@@ -85,10 +91,15 @@ internal class ExternalModuleImlFileEntitiesSerializer(modulePath: ModulePath,
       saveOption("rootProjectPath", externalSystemOptions.rootProjectPath)
       writer.saveComponent(fileUrlString, "ExternalSystem", componentTag)
     }
-    if (moduleType != null) {
-      val componentTag = JDomSerializationUtil.createComponentElement("DeprecatedModuleOptionManager")
-      componentTag.addContent(Element("option").setAttribute("key", "type").setAttribute("value", moduleType))
-      writer.saveComponent(fileUrlString, "DeprecatedModuleOptionManager", componentTag)
+    if (moduleType != null || !customImlData?.customModuleOptions.isNullOrEmpty()) {
+      val componentTag = JDomSerializationUtil.createComponentElement(DEPRECATED_MODULE_MANAGER_COMPONENT_NAME)
+      if (moduleType != null) {
+        componentTag.addContent(Element("option").setAttribute("key", "type").setAttribute("value", moduleType))
+      }
+      customImlData?.customModuleOptions?.forEach{ (key, value) ->
+        componentTag.addContent(Element("option").setAttribute("key", key).setAttribute("value", value))
+      }
+      writer.saveComponent(fileUrlString, DEPRECATED_MODULE_MANAGER_COMPONENT_NAME, componentTag)
     }
   }
 
@@ -96,7 +107,7 @@ internal class ExternalModuleImlFileEntitiesSerializer(modulePath: ModulePath,
     JpsImportedEntitySource(internalEntitySource, externalSystemId, true)
 
   override fun createFacetSerializer(): FacetEntitiesSerializer {
-    return FacetEntitiesSerializer(fileUrl, internalEntitySource, "ExternalFacetManager", true)
+    return FacetEntitiesSerializer(fileUrl, internalEntitySource, "ExternalFacetManager", getBaseDirPath(), true)
   }
 
   override fun getBaseDirPath(): String? {
@@ -144,7 +155,7 @@ internal class ExternalModuleListSerializer(private val externalStorageRoot: Vir
     if (FileUtil.extensionEquals(fileUrl, "xml")) {
       writer.saveComponent(fileUrl, "ExternalSystem", null)
       writer.saveComponent(fileUrl, "ExternalFacetManager", null)
-      writer.saveComponent(fileUrl, "DeprecatedModuleOptionManager", null)
+      writer.saveComponent(fileUrl, DEPRECATED_MODULE_MANAGER_COMPONENT_NAME, null)
     }
   }
 

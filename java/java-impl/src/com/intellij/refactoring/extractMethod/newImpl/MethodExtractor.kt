@@ -5,12 +5,16 @@ import com.intellij.codeInsight.Nullability
 import com.intellij.codeInsight.highlighting.HighlightManager
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.java.refactoring.JavaRefactoringBundle
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.registry.Registry
@@ -37,6 +41,7 @@ import com.intellij.refactoring.util.CommonRefactoringUtil
 import com.intellij.refactoring.util.ConflictsUtil
 import com.intellij.util.IncorrectOperationException
 import com.intellij.util.containers.MultiMap
+import org.jetbrains.annotations.NonNls
 
 class MethodExtractor {
 
@@ -56,11 +61,16 @@ class MethodExtractor {
       if (statements.isEmpty()) {
         throw ExtractException(RefactoringBundle.message("selected.block.should.represent.a.set.of.statements.or.an.expression"), file)
       }
-      val extractOptions = findExtractOptions(statements)
+      val prepareOptionsTask = object : Task.WithResult<ExtractOptions, ExtractException>(project, JavaRefactoringBundle.message("dialog.title.prepare.extract.options"), false) {
+        override fun compute(indicator: ProgressIndicator): ExtractOptions {
+          return ReadAction.compute<ExtractOptions, ExtractException> { findExtractOptions(statements) }
+        }
+      }
+      val extractOptions = ProgressManager.getInstance().run(prepareOptionsTask)
       selectTargetClass(extractOptions) { options ->
         val targetClass = options.anchor.containingClass ?: throw IllegalStateException("Failed to find target class")
         val annotate = PropertiesComponent.getInstance(options.project).getBoolean(ExtractMethodDialog.EXTRACT_METHOD_GENERATE_ANNOTATIONS, false)
-        val parameters = ExtractParameters(targetClass, range, "", annotate, false)
+        val parameters = ExtractParameters(targetClass, range, "", annotate, options.isStatic)
         val extractor = getDefaultInplaceExtractor(options)
         if (Registry.`is`("java.refactoring.extractMethod.inplace") && EditorSettingsExternalizable.getInstance().isVariableInplaceRenameEnabled) {
           val popupSettings = createInplaceSettingsPopup(options)
@@ -70,7 +80,8 @@ class MethodExtractor {
           doInplaceExtract(editor, extractor, parameters.copy(methodName = methodName), popupSettings, suggestedNames)
         }
         else {
-          extractor.extractInDialog(parameters)
+          val elements = ExtractSelector().suggestElementsToExtract(parameters.targetClass.containingFile, parameters.range)
+          extractor.extractInDialog(parameters.targetClass, elements, parameters.methodName, parameters.static)
         }
       }
     }
@@ -139,15 +150,9 @@ class MethodExtractor {
 
   private fun doRefactoring(options: ExtractOptions) {
     try {
-      val beforeData = RefactoringEventData()
-      beforeData.addElements(options.elements.toTypedArray())
-      options.project.messageBus.syncPublisher(RefactoringEventListener.REFACTORING_EVENT_TOPIC)
-        .refactoringStarted("refactoring.extract.method", beforeData)
+      sendRefactoringStartedEvent(options.elements.toTypedArray())
       val extractedElements = extractMethod(options)
-      val data = RefactoringEventData()
-      data.addElement(extractedElements.method)
-      options.project.messageBus.syncPublisher(RefactoringEventListener.REFACTORING_EVENT_TOPIC)
-        .refactoringDone("refactoring.extract.method", data)
+      sendRefactoringDoneEvent(extractedElements.method)
     }
     catch (e: IncorrectOperationException) {
       LOG.error(e)
@@ -308,6 +313,23 @@ class MethodExtractor {
 
   companion object {
     private val LOG = Logger.getInstance(MethodExtractor::class.java)
+
+    @NonNls const val refactoringId: String = "refactoring.extract.method"
+
+    internal fun sendRefactoringDoneEvent(extractedMethod: PsiMethod) {
+      val data = RefactoringEventData()
+      data.addElement(extractedMethod)
+      extractedMethod.project.messageBus.syncPublisher(RefactoringEventListener.REFACTORING_EVENT_TOPIC)
+        .refactoringDone(refactoringId, data)
+    }
+
+    internal fun sendRefactoringStartedEvent(elements: Array<PsiElement>) {
+      val project = elements.firstOrNull()?.project ?: return
+      val data = RefactoringEventData()
+      data.addElements(elements)
+      val publisher = project.messageBus.syncPublisher(RefactoringEventListener.REFACTORING_EVENT_TOPIC)
+      publisher.refactoringStarted(refactoringId, data)
+    }
   }
 }
 

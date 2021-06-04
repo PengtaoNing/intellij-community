@@ -1,14 +1,23 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.commit
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.nls.NlsMessages.formatNarrowAndList
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.AppUIExecutor.onUiThread
+import com.intellij.openapi.application.impl.coroutineDispatchingContext
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.progress.util.AbstractProgressIndicatorExBase
+import com.intellij.openapi.progress.util.ProgressWindow.DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.openapi.vcs.VcsBundle.message
 import com.intellij.openapi.vcs.changes.InclusionListener
+import com.intellij.openapi.wm.ex.ProgressIndicatorEx
+import com.intellij.openapi.wm.ex.StatusBarEx
+import com.intellij.openapi.wm.ex.WindowManagerEx
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.EditorTextComponent
 import com.intellij.ui.components.JBLabel
@@ -19,8 +28,14 @@ import com.intellij.util.ui.SwingHelper.createHtmlViewer
 import com.intellij.util.ui.SwingHelper.setHtml
 import com.intellij.util.ui.UIUtil.getErrorForeground
 import com.intellij.util.ui.components.BorderLayoutPanel
+import com.intellij.util.ui.update.Activatable
+import com.intellij.util.ui.update.UiNotifyConnector
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import org.jetbrains.annotations.Nls
-import javax.swing.JProgressBar
 import javax.swing.event.HyperlinkEvent
 import kotlin.properties.Delegates.observable
 
@@ -38,11 +53,13 @@ private fun JBLabel.setWarning(@NlsContexts.Label warningText: String) {
   isVisible = true
 }
 
-open class CommitProgressPanel : NonOpaquePanel(VerticalLayout(4)), CommitProgressUi, InclusionListener, DocumentListener {
-  private val progress = JProgressBar().apply {
-    isVisible = false
-    isIndeterminate = true
-  }
+open class CommitProgressPanel : NonOpaquePanel(VerticalLayout(4)), CommitProgressUi, InclusionListener, DocumentListener, Disposable {
+  private val scope = CoroutineScope(SupervisorJob() + onUiThread().coroutineDispatchingContext())
+    .also { Disposer.register(this) { it.cancel() } }
+
+  private val progressFlow = MutableStateFlow<CommitChecksProgressIndicator?>(null)
+  private var progress: CommitChecksProgressIndicator? by progressFlow::value
+
   private val failuresPanel = FailuresPanel()
   private val label = JBLabel().apply { isVisible = false }
 
@@ -63,29 +80,96 @@ open class CommitProgressPanel : NonOpaquePanel(VerticalLayout(4)), CommitProgre
 
   fun setup(commitWorkflowUi: CommitWorkflowUi, commitMessage: EditorTextComponent) {
     add(label)
-    add(progress)
     add(failuresPanel)
 
+    Disposer.register(commitWorkflowUi, this)
     commitMessage.addDocumentListener(this)
-    commitWorkflowUi.addInclusionListener(this, commitWorkflowUi)
+    commitWorkflowUi.addInclusionListener(this, this)
+
+    setupShowProgressInStatusBar()
+    setupProgressVisibilityDelay()
+    setupProgressSpinnerTooltip()
   }
 
-  override fun startProgress() {
-    progress.isVisible = true
+  private fun setupShowProgressInStatusBar() =
+    Disposer.register(this, UiNotifyConnector(this, object : Activatable {
+      override fun showNotify() {
+        progress?.let { removeFromStatusBar(it) }
+      }
+
+      override fun hideNotify() {
+        progress?.let { addToStatusBar(it) }
+      }
+    }))
+
+  @Suppress("EXPERIMENTAL_API_USAGE")
+  private fun setupProgressVisibilityDelay() {
+    progressFlow
+      .debounce(DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS.toLong())
+      .onEach { indicator ->
+        if (indicator?.isRunning == true && failuresPanel.isEmpty()) indicator.component.isVisible = true
+      }
+      .launchIn(scope + CoroutineName("Commit checks indicator visibility"))
+  }
+
+  private fun setupProgressSpinnerTooltip() {
+    val tooltip = CommitChecksProgressIndicatorTooltip({ progress }, { failuresPanel.width })
+    tooltip.installOn(failuresPanel.iconLabel, this)
+  }
+
+  override fun dispose() = Unit
+
+  override fun startProgress(): ProgressIndicatorEx {
+    check(progress == null) { "Commit checks indicator already created" }
+
+    val indicator = InlineCommitChecksProgressIndicator()
+    Disposer.register(this, indicator)
+
+    indicator.component.isVisible = false
+    indicator.addStateDelegate(object : AbstractProgressIndicatorExBase() {
+      override fun start() = progressStarted()
+      override fun stop() = progressStopped()
+    })
+
+    progress = indicator
+    indicator.start()
+    return indicator
+  }
+
+  private fun progressStarted() {
+    add(progress!!.component)
+    // we assume `isShowing == true` here - so we do not need to add progress to status bar
     failuresPanel.clearFailures()
   }
 
+  private fun progressStopped() {
+    progress!!.let {
+      remove(it.component)
+      removeFromStatusBar(it)
+      Disposer.dispose(it)
+    }
+    progress = null
+
+    failuresPanel.endProgress()
+  }
+
+  private fun addToStatusBar(progress: CommitChecksProgressIndicator) {
+    val frame = WindowManagerEx.getInstanceEx().findFrameFor(null) ?: return
+    val statusBar = frame.statusBar as? StatusBarEx ?: return
+
+    statusBar.addProgress(progress, CommitChecksTaskInfo())
+  }
+
+  private fun removeFromStatusBar(progress: CommitChecksProgressIndicator) =
+    // `finish` tracks list of finished `TaskInfo`-s - so we pass new instance to remove from status bar
+    progress.finish(CommitChecksTaskInfo())
+
   override fun addCommitCheckFailure(text: String, detailsViewer: () -> Unit) {
-    progress.isVisible = false
+    progress?.component?.isVisible = false
     failuresPanel.addFailure(CommitCheckFailure(text, detailsViewer))
   }
 
   override fun clearCommitCheckFailures() = failuresPanel.clearFailures()
-
-  override fun endProgress() {
-    progress.isVisible = false
-    failuresPanel.endProgress()
-  }
 
   override fun documentChanged(event: DocumentEvent) = clearError()
   override fun inclusionChanged() = clearError()
@@ -121,7 +205,7 @@ private class FailuresPanel : BorderLayoutPanel() {
   private var nextFailureId = 0
   private val failures = mutableMapOf<Int, CommitCheckFailure>()
 
-  private val iconLabel = JBLabel()
+  val iconLabel = JBLabel()
   private val description = createHtmlViewer(true, null, null, null)
 
   init {
@@ -134,6 +218,8 @@ private class FailuresPanel : BorderLayoutPanel() {
     isOpaque = false
     isVisible = false
   }
+
+  fun isEmpty(): Boolean = failures.isEmpty()
 
   fun showDetails(event: HyperlinkEvent) {
     if (event.eventType != HyperlinkEvent.EventType.ACTIVATED) return

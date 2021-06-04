@@ -1,8 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.project;
 
 import com.intellij.notification.Notification;
-import com.intellij.notification.NotificationListener;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
@@ -29,7 +28,6 @@ import org.jetbrains.idea.maven.utils.MavenProcessCanceledException;
 import org.jetbrains.idea.maven.utils.MavenProgressIndicator;
 import org.jetbrains.idea.maven.utils.MavenUtil;
 
-import javax.swing.event.HyperlinkEvent;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
@@ -154,7 +152,10 @@ public class MavenProjectResolver {
       }
 
       if (mavenProjectCandidate == null) continue;
-      MavenProjectChanges changes = mavenProjectCandidate.set(result, generalSettings, false, result.readingProblems.isEmpty(), false);
+
+
+      MavenProjectChanges changes = mavenProjectCandidate
+        .set(result, generalSettings, false, MavenProjectReaderResult.shouldResetDependenciesAndFolders(result), false);
       if (result.nativeMavenProject != null) {
         for (MavenImporter eachImporter : mavenProjectCandidate.getSuitableImporters()) {
           eachImporter.resolve(project, mavenProjectCandidate, result.nativeMavenProject, embedder, context);
@@ -295,18 +296,13 @@ public class MavenProjectResolver {
   public static void showNotificationInvalidConfig(@NotNull Project project, @Nullable MavenProject mavenProject, String message) {
     VirtualFile configFile = mavenProject == null ? null : MavenUtil.getConfigFile(mavenProject, MavenConstants.MAVEN_CONFIG_RELATIVE_PATH);
     if (configFile != null) {
-      NotificationListener listener = new NotificationListener() {
-        @Override
-        public void hyperlinkUpdate(@NotNull Notification notification, @NotNull HyperlinkEvent event) {
-          FileEditorManager.getInstance(project).openFile(configFile, true);
-        }
-      };
-      new Notification(MavenUtil.MAVEN_NOTIFICATION_GROUP, "", RunnerBundle.message("maven.invalid.config.file.with.link", message),
-                       NotificationType.ERROR, listener).notify(project);
+      new Notification(MavenUtil.MAVEN_NOTIFICATION_GROUP, RunnerBundle.message("maven.invalid.config.file.with.link", message), NotificationType.ERROR)
+        .setListener((notification, event) -> FileEditorManager.getInstance(project).openFile(configFile, true))
+        .notify(project);
     }
     else {
-      new Notification(MavenUtil.MAVEN_NOTIFICATION_GROUP, "", RunnerBundle.message("maven.invalid.config.file", message),
-                       NotificationType.ERROR).notify(project);
+      new Notification(MavenUtil.MAVEN_NOTIFICATION_GROUP, "", RunnerBundle.message("maven.invalid.config.file", message), NotificationType.ERROR)
+        .notify(project);
     }
   }
 

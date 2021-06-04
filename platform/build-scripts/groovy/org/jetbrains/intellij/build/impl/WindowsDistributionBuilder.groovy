@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.JDOMUtil
@@ -6,6 +6,7 @@ import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.io.FileFilters
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtilRt
+import com.intellij.util.Processor
 import groovy.transform.CompileStatic
 import groovy.transform.TypeCheckingMode
 import org.jdom.Element
@@ -17,16 +18,17 @@ import org.jetbrains.jps.model.library.JpsOrderRootType
 import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.model.module.JpsModuleSourceRoot
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.*
 
 @CompileStatic
 final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
   private final WindowsDistributionCustomizer customizer
   private final Path ideaProperties
-  private final Path patchedApplicationInfo
+  private final String patchedApplicationInfo
   private final Path icoFile
 
-  WindowsDistributionBuilder(BuildContext buildContext, WindowsDistributionCustomizer customizer, Path ideaProperties, Path patchedApplicationInfo) {
+  WindowsDistributionBuilder(BuildContext buildContext, WindowsDistributionCustomizer customizer, Path ideaProperties, String patchedApplicationInfo) {
     super(buildContext)
     this.patchedApplicationInfo = patchedApplicationInfo
     this.customizer = customizer
@@ -55,7 +57,7 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
         }
       }
     }
-    BuildTasksImpl.unpackPty4jNative(buildContext, winDistPath, "win")
+    def pty4jNativeDir = BuildTasksImpl.unpackPty4jNative(buildContext, winDistPath, "win")
     BuildTasksImpl.generateBuildTxt(buildContext, winDistPath)
     BuildTasksImpl.copyDistFiles(buildContext, winDistPath)
 
@@ -73,10 +75,17 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       buildWinLauncher(architecture, winDistPath)
     }
     customizer.copyAdditionalFiles(buildContext, winDistPath.toString())
-    for (String extension : ["exe", "dll"]) {
-      distBinDir.toFile().listFiles(FileFilters.filesWithExtension(extension))?.each {
-        buildContext.signExeFile(it.absolutePath)
-      }
+    FileFilter signFileFilter = createFileFilter("exe", "dll")
+    for (Path nativeRoot : [distBinDir, pty4jNativeDir]) {
+      FileUtil.processFilesRecursively(nativeRoot.toFile(), new Processor<File>() {
+        @Override
+        boolean process(File file) {
+          if (signFileFilter.accept(file)) {
+            buildContext.signExeFile(file.absolutePath)
+          }
+          return true
+        }
+      })
     }
   }
 
@@ -165,9 +174,8 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
         filter(token: "product_uc", value: buildContext.productProperties.getEnvironmentVariableBaseName(buildContext.applicationInfo))
         filter(token: "product_vendor", value: buildContext.applicationInfo.shortCompanyName)
         filter(token: "vm_options", value: vmOptionsFileName)
-        filter(token: "isEap", value: buildContext.applicationInfo.isEAP)
         filter(token: "system_selector", value: buildContext.systemSelector)
-        filter(token: "ide_jvm_args", value: buildContext.additionalJvmArguments)
+        filter(token: "ide_jvm_args", value: buildContext.additionalJvmArguments.join(' '))
         filter(token: "class_path", value: classPath)
         filter(token: "script_name", value: scriptName)
         filter(token: "base_name", value: baseName)
@@ -190,10 +198,8 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
     architectures.each {
       def fileName = "${buildContext.productProperties.baseFileName}${it.fileSuffix}.exe.vmoptions"
       def vmOptions = VmOptionsGenerator.computeVmOptions(it, buildContext.applicationInfo.isEAP, buildContext.productProperties)
-      Files.writeString(distBinDir.resolve(fileName), vmOptions.join('\n') + '\n')
+      Files.writeString(distBinDir.resolve(fileName), String.join('\r\n', vmOptions) + '\r\n', StandardCharsets.US_ASCII)
     }
-
-    buildContext.ant.fixcrlf(srcdir: distBinDir.toString(), includes: "*.vmoptions", eol: "dos")
   }
 
   @CompileStatic(TypeCheckingMode.SKIP)
@@ -202,10 +208,7 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       def executableBaseName = "${buildContext.productProperties.baseFileName}${arch.fileSuffix}"
       Path launcherPropertiesPath = buildContext.paths.tempDir.resolve("launcher${arch.fileSuffix}.properties")
       def upperCaseProductName = buildContext.applicationInfo.upperCaseProductName
-      String vmOptions = (buildContext.additionalJvmArguments +
-                          " -Dide.native.launcher=true" +
-                          " -Didea.vendor.name=${buildContext.applicationInfo.shortCompanyName}" +
-                          " -Didea.paths.selector=${buildContext.systemSelector}").trim()
+      List<String> vmOptions = buildContext.additionalJvmArguments + ['-Dide.native.launcher=true']
       def productName = buildContext.applicationInfo.shortProductName
       String classPath = buildContext.bootClassPathJarNames.join(";")
 
@@ -226,7 +229,7 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
         IDS_PROPS_ENV_VAR=${envVarBaseName}_PROPERTIES
         IDS_VM_OPTIONS_ENV_VAR=$envVarBaseName${vmOptionsEnvVarSuffix}_VM_OPTIONS
         IDS_ERROR_LAUNCHING_APP=Error launching ${productName}
-        IDS_VM_OPTIONS=${vmOptions}
+        IDS_VM_OPTIONS=${vmOptions.join(' ')}
         IDS_CLASSPATH_LIBS=${classPath}""".stripIndent().trim())
 
       def communityHome = "$buildContext.paths.communityHome"
@@ -263,22 +266,23 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
    * Generates ApplicationInfo.xml file for launcher generator which contains link to proper *.ico file.
    * //todo[nik] pass path to ico file to LauncherGeneratorMain directly (probably after IDEA-196705 is fixed).
    */
-  private Path generateApplicationInfoForLauncher(@NotNull Path appInfoFile, @NotNull Path icoFilesDirectory) {
+  private Path generateApplicationInfoForLauncher(@NotNull String appInfo, @NotNull Path icoFilesDirectory) {
+    Path patchedFile = buildContext.paths.tempDir.resolve("win-launcher-application-info.xml")
     if (icoFile == null) {
-      return appInfoFile
+      Files.writeString(patchedFile, appInfo)
+      return patchedFile
     }
 
     Files.createDirectories(icoFilesDirectory)
     Files.copy(icoFile, icoFilesDirectory.resolve(icoFile.fileName), StandardCopyOption.REPLACE_EXISTING)
-    Element root = JDOMUtil.load(appInfoFile)
+    Element root = JDOMUtil.load(appInfo)
     // do not use getChild - maybe null due to namespace
     Element iconElement = (Element)root.getContent().stream()
       .filter({ it instanceof Element && ((Element)it).getName() == "icon" })
       .findFirst()
-      .orElseThrow({ new RuntimeException("`icon` element not found in $appInfoFile:\n${Files.readString(appInfoFile)}") })
+      .orElseThrow({ new RuntimeException("`icon` element not found in $appInfo:\n${appInfo}") })
 
     iconElement.setAttribute("ico", icoFile.fileName.toString())
-    Path patchedFile = buildContext.paths.tempDir.resolve("win-launcher-application-info.xml")
     JDOMUtil.write(root, patchedFile)
     return patchedFile
   }
@@ -306,6 +310,16 @@ final class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
     String javaExecutablePath = isJreIncluded ? "jbr/bin/java.exe" : null
     new ProductInfoGenerator(buildContext)
       .generateProductJson(targetDir, "bin", null, launcherPath, javaExecutablePath, vmOptionsPath, OsFamily.WINDOWS)
+  }
+
+  private static @NotNull FileFilter createFileFilter(String... extensions) {
+    List<FileFilter> filters = extensions.collect { FileFilters.filesWithExtension(it) }
+    return new FileFilter() {
+      @Override
+      boolean accept(File pathname) {
+        return filters.any { it.accept(pathname) }
+      }
+    }
   }
 }
 

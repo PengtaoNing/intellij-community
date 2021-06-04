@@ -191,10 +191,20 @@ public final class BackgroundTaskUtil {
    */
   @CalledInAny
   public static @NotNull ProgressIndicator executeOnPooledThread(@NotNull Disposable parent, @NotNull Runnable runnable) {
+    return execute(AppExecutorUtil.getAppExecutorService(), parent, runnable);
+  }
+
+  /**
+   * Does tha same as {@link BackgroundTaskUtil#executeOnPooledThread(Disposable, Runnable)} method but allows to use
+   * custom {@link Executor} instance.
+   */
+  @CalledInAny
+  public static @NotNull ProgressIndicator execute(@NotNull Executor executor, @NotNull Disposable parent, @NotNull Runnable runnable) {
     ProgressIndicator indicator = new EmptyProgressIndicator();
     indicator.start();
 
-    CompletableFuture<?> future = CompletableFuture.runAsync(() -> ProgressManager.getInstance().runProcess(runnable, indicator), AppExecutorUtil.getAppExecutorService());
+    CompletableFuture<?> future = CompletableFuture.runAsync(() -> ProgressManager.getInstance().runProcess(runnable, indicator),
+                                                             executor);
 
     Disposable disposable = () -> {
       if (indicator.isRunning()) indicator.cancel();
@@ -235,10 +245,16 @@ public final class BackgroundTaskUtil {
 
   @CalledInAny
   public static void runUnderDisposeAwareIndicator(@NotNull Disposable parent, @NotNull Runnable task) {
-    final ProgressIndicator threadProgress = ProgressManager.getInstance().getProgressIndicator();
-    final ProgressIndicator indicator = threadProgress == null
+    runUnderDisposeAwareIndicator(parent, task, ProgressManager.getInstance().getProgressIndicator());
+  }
+
+  @CalledInAny
+  public static void runUnderDisposeAwareIndicator(@NotNull Disposable parent,
+                                                   @NotNull Runnable task,
+                                                   @Nullable ProgressIndicator parentIndicator) {
+    final ProgressIndicator indicator = parentIndicator == null
                                         ? new EmptyProgressIndicator(ModalityState.defaultModalityState())
-                                        : new SensitiveProgressWrapper(threadProgress);
+                                        : new SensitiveProgressWrapper(parentIndicator);
     Disposable disposable = () -> {
       if (indicator.isRunning()) {
         indicator.cancel();

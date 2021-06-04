@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.autolink
 
-import com.intellij.ide.impl.isTrusted
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.extensions.ExtensionPointListener
@@ -22,6 +21,7 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.platform.PlatformProjectOpenProcessor.Companion.isConfiguredByPlatformProcessor
+import com.intellij.platform.PlatformProjectOpenProcessor.Companion.isNewProject
 import com.intellij.util.PathUtil
 import com.intellij.util.concurrency.AppExecutorUtil
 import org.jetbrains.concurrency.AsyncPromise
@@ -36,8 +36,8 @@ class UnlinkedProjectStartupActivity : StartupActivity.Background {
     showNotificationWhenNonEmptyProjectUnlinked(project)
     showNotificationWhenBuildToolPluginEnabled(project, externalProjectPath)
     showNotificationWhenNewBuildFileCreated(project, externalProjectPath)
-    if (!project.isNewProject()) {
-      if (project.isOpenedWithEmptyModel()) {
+    if (!project.isNewExternalProject()) {
+      if (!project.isNewPlatformProject() && project.isOpenedWithEmptyModel()) {
         linkProjectIfUnlinkedProjectsFound(project, externalProjectPath)
       }
       else {
@@ -46,8 +46,12 @@ class UnlinkedProjectStartupActivity : StartupActivity.Background {
     }
   }
 
-  private fun Project.isNewProject(): Boolean {
+  private fun Project.isNewExternalProject(): Boolean {
     return ExternalSystemUtil.isNewProject(this)
+  }
+
+  private fun Project.isNewPlatformProject(): Boolean {
+    return isNewProject()
   }
 
   private fun Project.isOpenedWithEmptyModel(): Boolean {
@@ -62,13 +66,14 @@ class UnlinkedProjectStartupActivity : StartupActivity.Background {
   private fun linkProjectIfUnlinkedProjectsFound(project: Project, externalProjectPath: String) {
     findUnlinkedProjectBuildFiles(project, externalProjectPath) {
       val unlinkedProjects = it.filter { (_, buildFiles) -> buildFiles.isNotEmpty() }
-      val singleUnlinkedProject = unlinkedProjects.keys.singleOrNull()
-      if (singleUnlinkedProject != null && !Registry.`is`("external.system.auto.import.disabled") && project.isTrusted()) {
+      val linkedProjects = it.filter { (upa, _) -> upa.isLinkedProject(project, externalProjectPath) }
+      if (unlinkedProjects.size == 1 && linkedProjects.isEmpty() && !Registry.`is`("external.system.auto.import.disabled")) {
+        val unlinkedProject = unlinkedProjects.keys.single()
         if (LOG.isDebugEnabled) {
-          val projectId = singleUnlinkedProject.getProjectId(externalProjectPath)
+          val projectId = unlinkedProject.getProjectId(externalProjectPath)
           LOG.debug("Auto-linked ${projectId.readableName} project")
         }
-        singleUnlinkedProject.linkAndLoadProjectWithLoadingConfirmation(project, externalProjectPath)
+        unlinkedProject.linkAndLoadProjectWithLoadingConfirmation(project, externalProjectPath)
       }
       else {
         val notificationAware = UnlinkedProjectNotificationAware.getInstance(project)

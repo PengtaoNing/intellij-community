@@ -117,6 +117,8 @@ final class UsageViewTreeCellRenderer extends ColoredTreeCellRenderer {
         }
         final String text = presentation.getPresentableText();
         append(text == null ? "" : text, SimpleTextAttributes.REGULAR_ATTRIBUTES);
+        final String locationString = presentation.getLocationString();
+        append(locationString == null ? "" : " " + locationString, SimpleTextAttributes.GRAY_ATTRIBUTES);
         setIcon(presentation.getIcon(expanded));
       }
       else if (treeNode instanceof GroupNode) {
@@ -131,7 +133,7 @@ final class UsageViewTreeCellRenderer extends ColoredTreeCellRenderer {
           Icon tagIcon = TagManager.appendTags(element, this);
           append(group.getText(myView),
                  patchAttrs(node, showAsReadOnly ? UsageTreeColors.READ_ONLY_ATTRIBUTES : SimpleTextAttributes.REGULAR_ATTRIBUTES));
-          Icon icon = node.getGroup().getIcon(expanded);
+          Icon icon = group.getIcon(expanded);
           if (tagIcon != null) {
             icon = new RowIcon(tagIcon, icon);
           }

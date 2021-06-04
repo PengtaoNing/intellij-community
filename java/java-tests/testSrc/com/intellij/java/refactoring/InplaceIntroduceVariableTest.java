@@ -3,6 +3,7 @@ package com.intellij.java.refactoring;
 
 import com.intellij.codeInsight.template.impl.TemplateManagerImpl;
 import com.intellij.codeInsight.template.impl.TemplateState;
+import com.intellij.java.JavaBundle;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.editor.Editor;
@@ -75,21 +76,33 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
      type("expr");
    });
   }
-  
+
   public void testNoNameSuggested() {
     doTest(introducer -> type("xyz"));
   }
 
   public void testPlaceInsideLoopAndRename() {
-    doTest(introducer -> type("expr"));
+    doTestReplaceChoice("Runnable: () -> {...}", introducer -> type("expr"));
   }
   
+  public void testPlaceOutsideLoopAndRename() {
+    doTestReplaceChoice(JavaBundle.message("target.code.block.presentable.text"), introducer -> type("expr"));
+  }
+
+  public void testPlaceOutsideLambdaInIfWithoutBraces() {
+    doTestReplaceChoice(JavaBundle.message("target.code.block.presentable.text"), introducer -> type("expr"));
+  }
+
+  public void testPlaceOutsideLambdaInClass() {
+    doTestReplaceChoice(JavaBundle.message("target.code.block.presentable.text"), introducer -> type("expr"));
+  }
+
   public void testPlaceInsideLambdaBody() {
-    doTest(introducer -> type("expr"));
+    doTestReplaceChoice("Runnable: () -> {...}", introducer -> type("expr"));
   }
 
   public void testPlaceInsideLambdaBodyMultipleOccurrences1() {
-    doTestReplaceChoice("Replace all 0 occurrences", introducer -> type("expr"));
+    doTestReplaceChoice("Replace all 0 occurrences", "Runnable: () -> {...}", introducer -> type("expr"), null);
   }
 
   public void testReplaceAllOnDummyCodeWithSameNameAsGenerated() {
@@ -145,15 +158,15 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
   public void testWritable() {
     doTestReplaceChoice("Replace read and write occurrences (will change semantics!)");
   }
-  
+
   public void testNoWritable() {
     doTestReplaceChoice("Replace all occurrences but write");
   }
-  
+
   public void testAllInsertFinal() {
     doTestReplaceChoice("Replace all 0 occurrences");
   }
-  
+
   public void testAllIncomplete() {
     doTestReplaceChoice("Replace all 0 occurrences");
   }
@@ -183,36 +196,45 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
      invokeEditorAction(IdeActions.ACTION_EDITOR_ENTER);
    });
   }
-  
+
   public void testInBlock1() {
     doTestReplaceChoice("Replace 0 occurrences in 'else' block");
   }
-  
+
   public void testInBlock2() {
     doTestReplaceChoice("Replace 0 occurrences in 'if-then' block");
   }
-  
+
   public void testInBlock3() {
     doTestReplaceChoice("Replace all 0 occurrences");
   }
-  
+
   public void testInBlockLambda1() {
     doTestReplaceChoice("Replace 0 occurrences in 'lambda' block");
   }
-  
+
   public void testInBlockLambda2() {
     doTestReplaceChoice("Replace 0 occurrences in outer 'lambda' block");
   }
-  
+
   public void testAllLValues() {
-    doTestReplaceChoice("Replace all 2 occurrences (will change semantics!)", null,
+    doTestReplaceChoice("Replace all 2 occurrences (will change semantics!)", null, null,
                         List.of("Replace this occurrence only", "Replace all 2 occurrences (will change semantics!)"));
   }
-  
+
+  public void testSelectLValueThenFilterIt() {
+    doTestReplaceChoice("Replace read and write occurrences (will change semantics!)", null, null,
+                        List.of("Replace this occurrence only", "Replace read and write occurrences (will change semantics!)"));
+  }
+
+  public void testSelectLValueThenFilterItFinal() {
+    doTest(null);
+  }
+
   public void testHeavilyBrokenFile() {
     doTest(null);
   }
-  
+
   public void testHeavilyBrokenFile2() {
     doTest(null);
   }
@@ -249,8 +271,13 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
     doTestReplaceChoice("Replace all 0 occurrences", introducer -> type("xyz"));
   }
 
+  public void testHeavilyBrokenFile11() {
+    assertThrows(CommonRefactoringUtil.RefactoringErrorHintException.class,
+                 "Selected block should represent an expression", () -> doTest(null));
+  }
+
   public void testAnnotationArgument() {
-    assertThrows(CommonRefactoringUtil.RefactoringErrorHintException.class, 
+    assertThrows(CommonRefactoringUtil.RefactoringErrorHintException.class,
                  "Introduce Variable refactoring is not supported in the current context", () -> doTest(null));
   }
 
@@ -261,7 +288,7 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
   public void testLambdaParameterAddCast() {
     doTestReplaceChoice("Replace all 0 occurrences");
   }
-  
+
   public void testWhileTrue() {
     doTest(null);
   }
@@ -322,10 +349,12 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
   }
 
   private void doTestReplaceChoice(String choiceText, Consumer<AbstractInplaceIntroducer<?, ?>> pass) {
-    doTestReplaceChoice(choiceText, pass, null);
+    doTestReplaceChoice(choiceText, null, pass, null);
   }
 
+  
   private void doTestReplaceChoice(String choiceText,
+                                   String secondChoiceText,
                                    Consumer<AbstractInplaceIntroducer<?, ?>> pass,
                                    @Nullable List<String> expectedOptions) {
     String name = getTestName(true);
@@ -337,6 +366,9 @@ public class InplaceIntroduceVariableTest extends AbstractJavaInplaceIntroduceTe
 
       MyIntroduceHandler handler = createIntroduceHandler();
       UiInterceptors.register(new ChooserInterceptor(expectedOptions, Pattern.quote(choiceText)));
+      if (secondChoiceText != null) {
+        UiInterceptors.register(new ChooserInterceptor(expectedOptions, Pattern.quote(secondChoiceText)));
+      }
       final AbstractInplaceIntroducer<?, ?> introducer = invokeRefactoring(handler);
       if (pass != null) {
         pass.accept(introducer);

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.execution.target
 
 import com.intellij.execution.CantRunException
@@ -39,18 +39,17 @@ import java.util.*
 
 class MavenCommandLineSetup(private val project: Project,
                             private val name: @NlsSafe String,
-                            private val request: TargetEnvironmentRequest,
-                            private val target: TargetEnvironmentConfiguration) {
+                            private val request: TargetEnvironmentRequest) {
 
   val commandLine = TargetedCommandLineBuilder(request)
   val platform = request.targetPlatform.platform
 
-  private val defaultMavenRuntimeConfiguration: MavenRuntimeTargetConfiguration? = target.runtimes.findByType(
+  private val defaultMavenRuntimeConfiguration: MavenRuntimeTargetConfiguration? = request.configuration?.runtimes?.findByType(
     MavenRuntimeTargetConfiguration::class.java)
-  private val defaultJavaRuntimeConfiguration: JavaLanguageRuntimeConfiguration? = target.runtimes.findByType(
+  private val defaultJavaRuntimeConfiguration: JavaLanguageRuntimeConfiguration? = request.configuration?.runtimes?.findByType(
     JavaLanguageRuntimeConfiguration::class.java)
 
-  private val environmentPromise = AsyncPromise<Pair<TargetEnvironment, TargetEnvironmentAwareRunProfileState.TargetProgressIndicator>>()
+  private val environmentPromise = AsyncPromise<Pair<TargetEnvironment, TargetProgressIndicator>>()
   private val dependingOnEnvironmentPromise = mutableListOf<Promise<Unit>>()
 
   init {
@@ -58,18 +57,21 @@ class MavenCommandLineSetup(private val project: Project,
   }
 
   @Throws(CantRunException::class)
-  fun setupCommandLine(settings: MavenRunConfiguration.MavenSettings): MavenCommandLineSetup {
+  @JvmOverloads
+  fun setupCommandLine(settings: MavenRunConfiguration.MavenSettings, setupEventListener: Boolean = true): MavenCommandLineSetup {
     val mavenOptsValues = mutableListOf<TargetValue<String>>()
-    setupExePath(settings.myGeneralSettings)
+    setupExePath()
     setupTargetJavaRuntime(settings.myRunnerSettings)
     setupTargetProjectDirectories(settings)
-    setupMavenExtClassPath(mavenOptsValues)
+    if (setupEventListener) {
+      setupMavenExtClassPath()
+    }
     addMavenParameters(settings, mavenOptsValues)
     setupTargetEnvironmentVariables(settings, mavenOptsValues)
     return this
   }
 
-  fun provideEnvironment(environment: TargetEnvironment, progressIndicator: TargetEnvironmentAwareRunProfileState.TargetProgressIndicator) {
+  fun provideEnvironment(environment: TargetEnvironment, progressIndicator: TargetProgressIndicator) {
     environmentPromise.setResult(environment to progressIndicator)
     for (promise in dependingOnEnvironmentPromise) {
       promise.blockingGet(0)
@@ -77,7 +79,7 @@ class MavenCommandLineSetup(private val project: Project,
   }
 
   @Throws(CantRunException::class)
-  private fun setupExePath(generalSettings: MavenGeneralSettings) {
+  private fun setupExePath() {
     if (defaultMavenRuntimeConfiguration == null) {
       commandLine.setExePath("mvn")
       return
@@ -103,13 +105,13 @@ class MavenCommandLineSetup(private val project: Project,
     }?.let { commandLine.addEnvironmentVariable("JAVA_HOME", it) }
   }
 
-  private fun setupMavenExtClassPath(mavenOptsValues: MutableList<TargetValue<String>>) {
+  private fun setupMavenExtClassPath() {
     val mavenEventListener = MavenServerManager.getMavenEventListener()
     val uploadPath = Paths.get(toSystemDependentName(mavenEventListener.path))
     val uploadRoot = createUploadRoot(MavenRuntimeType.MAVEN_EXT_CLASS_PATH_VOLUME, uploadPath.parent)
     request.uploadVolumes += uploadRoot
     val targetValue = upload(uploadRoot, uploadPath.toString(), uploadPath.fileName.toString())
-    mavenOptsValues.add(TargetValue.map(targetValue) { "-D" + MavenServerEmbedder.MAVEN_EXT_CLASS_PATH + "=" + it })
+    commandLine.addParameter(TargetValue.map(targetValue) { "-D" + MavenServerEmbedder.MAVEN_EXT_CLASS_PATH + "=" + it })
   }
 
   private fun addMavenParameters(settings: MavenRunConfiguration.MavenSettings, mavenOptsValues: MutableList<TargetValue<String>>) {
@@ -206,7 +208,7 @@ class MavenCommandLineSetup(private val project: Project,
   }
 
   private fun createUploadRoot(volumeDescriptor: VolumeDescriptor, localRootPath: Path): TargetEnvironment.UploadRoot {
-    return MavenRuntimeTargetConfiguration.createUploadRoot(defaultMavenRuntimeConfiguration, request, target, volumeDescriptor, localRootPath)
+    return MavenRuntimeTargetConfiguration.createUploadRoot(defaultMavenRuntimeConfiguration, request, volumeDescriptor, localRootPath)
   }
 
   private fun setupTargetProjectDirectories(settings: MavenRunConfiguration.MavenSettings) {

@@ -14,11 +14,11 @@ import com.intellij.vcs.log.graph.asTestGraphString
 import com.intellij.vcs.log.graph.graph
 import com.intellij.vcs.log.graph.impl.facade.BaseController
 import com.intellij.vcs.log.graph.impl.facade.FilteredController
-import gnu.trove.TIntObjectHashMap
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap
 import org.junit.Assert
 import org.junit.Assume.assumeFalse
-import org.junit.Ignore
 import org.junit.Test
 
 class FileHistoryTest {
@@ -428,14 +428,13 @@ class FileHistoryTest {
     }
   }
 
-  @Ignore
   @Test
   fun historyWithDeletedAndAddedUnderDifferentName() {
     val after = LocalFilePath("after.txt", false)
     val before = LocalFilePath("before.txt", false)
     val fileNamesData = FileNamesDataBuilder(after)
       .addChange(after, 0, listOf(MODIFIED), listOf(1))
-      .addChange(after, 1, listOf(MODIFIED, MODIFIED), listOf(1, 3))
+      .addChange(after, 1, listOf(MODIFIED, MODIFIED), listOf(2, 3))
       .addChange(after, 2, listOf(MODIFIED), listOf(6))
       .addChange(after, 3, listOf(MODIFIED), listOf(4))
       .addChange(after, 4, listOf(MODIFIED, ADDED), listOf(6, 5))
@@ -463,7 +462,7 @@ class FileHistoryTest {
       1(2, 3)
       2(6)
       3(4)
-      4(6)
+      4(6, 5)
       5(7)
       6(8)
       7(8)
@@ -474,7 +473,7 @@ class FileHistoryTest {
 }
 
 private class FileNamesDataBuilder(private val path: FilePath) {
-  private val commitsMap: MutableMap<FilePath, TIntObjectHashMap<TIntObjectHashMap<VcsLogPathsIndex.ChangeKind>>> =
+  private val commitsMap: MutableMap<FilePath, Int2ObjectMap<Int2ObjectMap<VcsLogPathsIndex.ChangeKind>>> =
     Object2ObjectOpenCustomHashMap(FILE_PATH_HASHING_STRATEGY)
   private val renamesMap: MultiMap<EdgeData<Int>, EdgeData<FilePath>> = MultiMap()
 
@@ -484,7 +483,7 @@ private class FileNamesDataBuilder(private val path: FilePath) {
   }
 
   fun addChange(path: FilePath, commit: Int, changes: List<VcsLogPathsIndex.ChangeKind>, parents: List<Int>): FileNamesDataBuilder {
-    commitsMap.getOrPut(path) { TIntObjectHashMap() }.put(commit, parents.zip(changes).toIntObjectMap())
+    commitsMap.getOrPut(path) { Int2ObjectOpenHashMap() }.put(commit, parents.zip(changes).toIntObjectMap())
     return this
   }
 
@@ -496,8 +495,8 @@ private class FileNamesDataBuilder(private val path: FilePath) {
         }
       }
 
-      override fun getAffectedCommits(path: FilePath): TIntObjectHashMap<TIntObjectHashMap<VcsLogPathsIndex.ChangeKind>> {
-        return commitsMap[path] ?: TIntObjectHashMap()
+      override fun getAffectedCommits(path: FilePath): Int2ObjectMap<Int2ObjectMap<VcsLogPathsIndex.ChangeKind>> {
+        return commitsMap[path] ?: Int2ObjectOpenHashMap()
       }
     }.build()
   }
@@ -509,8 +508,8 @@ private fun FileNamesDataBuilder.addDetectedRename(parent: Int, child: Int, befo
     .addRename(parent, child, beforePath, afterPath)
 }
 
-private fun <T> List<Pair<Int, T>>.toIntObjectMap(): TIntObjectHashMap<T> {
-  val result = TIntObjectHashMap<T>()
+private fun <T> List<Pair<Int, T>>.toIntObjectMap(): Int2ObjectMap<T> {
+  val result = Int2ObjectOpenHashMap<T>()
   this.forEach { result.put(it.first, it.second) }
   return result
 }

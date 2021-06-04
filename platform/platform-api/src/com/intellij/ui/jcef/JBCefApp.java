@@ -27,7 +27,6 @@ import org.cef.CefSettings.LogSeverity;
 import org.cef.callback.CefSchemeHandlerFactory;
 import org.cef.callback.CefSchemeRegistrar;
 import org.cef.handler.CefAppHandlerAdapter;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,8 +49,8 @@ import java.util.function.Function;
 public final class JBCefApp {
   private static final Logger LOG = Logger.getInstance(JBCefApp.class);
 
-  static final @NotNull NotNullLazyValue<NotificationGroup> NOTIFICATION_GROUP = NotNullLazyValue.createValue(() -> {
-    return NotificationGroup.create("JCEF errors", NotificationDisplayType.BALLOON, true, null, null, null, null);
+  public static final @NotNull NotNullLazyValue<NotificationGroup> NOTIFICATION_GROUP = NotNullLazyValue.createValue(() -> {
+    return NotificationGroup.create("JCEF", NotificationDisplayType.BALLOON, true, null, null, null, null);
   });
 
   private static final String MISSING_LIBS_SUPPORT_URL = "https://intellij-support.jetbrains.com/hc/en-us/articles/360016421559";
@@ -110,7 +109,7 @@ public final class JBCefApp {
             if (proc.waitFor() == 0 && missingLibs.length() > 0) {
               String msg = IdeBundle.message("notification.content.jcef.missingLibs", missingLibs);
               Notification notification = NOTIFICATION_GROUP.getValue().
-                createNotification(IdeBundle.message("notification.title.jcef.startFailure"), msg, NotificationType.ERROR, null);
+                createNotification(IdeBundle.message("notification.title.jcef.startFailure"), msg, NotificationType.ERROR);
               //noinspection DialogTitleCapitalization
               notification.addAction(new AnAction(IdeBundle.message("action.jcef.followInstructions")) {
                 @Override
@@ -129,7 +128,7 @@ public final class JBCefApp {
       throw new IllegalStateException("CefApp failed to start");
     }
     CefSettings settings = config.getCefSettings();
-    settings.windowless_rendering_enabled = isOffScreenRenderingMode();
+    settings.windowless_rendering_enabled = isOffScreenRenderingModeEnabled();
     settings.log_severity = getLogLevel();
     settings.log_file = System.getProperty("ide.browser.jcef.log.path",
       System.getProperty("user.home") + Platform.current().fileSeparator + "jcef_" + ProcessHandle.current().pid() + ".log");
@@ -151,6 +150,21 @@ public final class JBCefApp {
       .toArray(String[]::new);
 
     String[] args = ArrayUtil.mergeArrays(config.getAppArgs(), argsFromProviders);
+
+    JBCefProxySettings proxySettings = JBCefProxySettings.getInstance();
+    String[] proxyArgs = null;
+    if (proxySettings.USE_PROXY_PAC) {
+      if (proxySettings.USE_PAC_URL) {
+        proxyArgs = new String[] {"--proxy-pac-url=" + proxySettings.PAC_URL + ":" + proxySettings.PROXY_PORT};
+      }
+      else {
+        proxyArgs = new String[] {"--proxy-auto-detect"};
+      }
+    }
+    else if (proxySettings.USE_HTTP_PROXY) {
+      proxyArgs = new String[] {"--proxy-server=" + proxySettings.PROXY_HOST + ":" + proxySettings.PROXY_PORT};
+    }
+    if (proxyArgs != null) args = ArrayUtil.mergeArrays(args, proxyArgs);
 
     CefApp.addAppHandler(new MyCefAppHandler(args));
     myCefApp = CefApp.getInstance(settings);
@@ -294,17 +308,42 @@ public final class JBCefApp {
     }
   }
 
+  /**
+   * Returns {@code true} if JCEF has successfully started.
+   */
+  public static boolean isStarted() {
+    boolean initialised = ourInitialized.get();
+    if (!initialised) return false;
+    //noinspection ConstantConditions
+    return getInstance() != null;
+  }
+
   @NotNull
   public JBCefClient createClient() {
-    return new JBCefClient(myCefApp.createClient());
+    return createClient(false);
+  }
+
+  @NotNull
+  JBCefClient createClient(boolean isDefault) {
+    return new JBCefClient(myCefApp.createClient(), isDefault);
   }
 
   /**
-   * Returns true if JCEF is run in off-screen rendering mode.
+   * Returns true if the off-screen rendering mode is enabled.
+   * <p></p>
+   * This mode allows for browser creation in either windowed or off-screen rendering mode.
+   *
+   * @see JBCefOsrHandlerBrowser
+   * @see JBCefBrowserBuilder#setOffScreenRendering(boolean)
    */
-  @ApiStatus.Experimental
-  public static boolean isOffScreenRenderingMode() {
+  public static boolean isOffScreenRenderingModeEnabled() {
     return RegistryManager.getInstance().is("ide.browser.jcef.osr.enabled");
+  }
+
+  static void checkOffScreenRenderingModeEnabled() {
+    if (!isOffScreenRenderingModeEnabled()) {
+      throw new IllegalStateException("off-screen rendering mode is disabled: 'ide.browser.jcef.osr.enabled=false'");
+    }
   }
 
   /**

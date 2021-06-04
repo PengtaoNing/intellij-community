@@ -22,8 +22,8 @@ import com.intellij.util.SmartList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class RunContentBuilder extends RunTab {
   private static final String JAVA_RUNNER = "JavaRunner";
@@ -138,7 +138,7 @@ public final class RunContentBuilder extends RunTab {
     actionGroup.add(ActionManager.getInstance().getAction(IdeActions.ACTION_RERUN));
     final AnAction[] actions = contentDescriptor.getRestartActions();
     actionGroup.addAll(actions);
-    actionGroup.add(new CreateAction());
+    actionGroup.add(new CreateAction(AllIcons.General.Settings));
     actionGroup.addSeparator();
 
     actionGroup.add(ActionManager.getInstance().getAction(IdeActions.ACTION_STOP_PROGRAM));
@@ -183,6 +183,7 @@ public final class RunContentBuilder extends RunTab {
     @NotNull private final RunnerLayoutUi myUi;
     private final boolean myShowConsoleOnStdOut;
     private final boolean myShowConsoleOnStdErr;
+    private final AtomicBoolean myFocused = new AtomicBoolean();
 
     public ConsoleToFrontListener(@NotNull RunConfigurationBase runConfigurationBase,
                                   @NotNull Project project,
@@ -198,16 +199,14 @@ public final class RunContentBuilder extends RunTab {
     }
 
     @Override
-    public void contentAdded(@NotNull Collection<? extends ConsoleViewContentType> types) {
-      if (myProject.isDisposed() || myUi.isDisposed())
+    public void textAdded(@NotNull String text, @NotNull ConsoleViewContentType type) {
+      if (myProject.isDisposed() || myUi.isDisposed()) {
         return;
-      for (ConsoleViewContentType type : types) {
-        if ((type == ConsoleViewContentType.NORMAL_OUTPUT) && myShowConsoleOnStdOut
-            || (type == ConsoleViewContentType.ERROR_OUTPUT) && myShowConsoleOnStdErr) {
-          RunContentManager.getInstance(myProject).toFrontRunContent(myExecutor, myRunContentDescriptor);
-          myUi.selectAndFocus(myUi.findContent(ExecutionConsole.CONSOLE_CONTENT_ID), false, false);
-          return;
-        }
+      }
+      if (((type == ConsoleViewContentType.NORMAL_OUTPUT) && myShowConsoleOnStdOut
+           || (type == ConsoleViewContentType.ERROR_OUTPUT) && myShowConsoleOnStdErr) && myFocused.compareAndSet(false, true)) {
+        RunContentManager.getInstance(myProject).toFrontRunContent(myExecutor, myRunContentDescriptor);
+        myUi.selectAndFocus(myUi.findContent(ExecutionConsole.CONSOLE_CONTENT_ID), false, false);
       }
     }
   }

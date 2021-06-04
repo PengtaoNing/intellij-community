@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.commit
 
 import com.intellij.openapi.actionSystem.ActionGroup
@@ -12,6 +12,8 @@ import com.intellij.openapi.application.impl.coroutineDispatchingContext
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.util.AbstractProgressIndicatorExBase
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.DumbService.isDumb
 import com.intellij.openapi.util.registry.Registry
@@ -24,6 +26,8 @@ import com.intellij.openapi.vcs.changes.CommitResultHandler
 import com.intellij.openapi.vcs.changes.actions.DefaultCommitExecutorAction
 import com.intellij.openapi.vcs.checkin.*
 import com.intellij.openapi.vcs.checkin.CheckinHandler.ReturnResult
+import com.intellij.openapi.wm.ex.ProgressIndicatorEx
+import com.intellij.util.progress.DelegatingProgressIndicatorEx
 import com.intellij.vcs.commit.AbstractCommitWorkflow.Companion.getCommitExecutors
 import kotlinx.coroutines.*
 import java.lang.Runnable
@@ -32,7 +36,7 @@ import kotlin.properties.Delegates.observable
 private val LOG = logger<NonModalCommitWorkflowHandler<*, *>>()
 
 private val isBackgroundCommitChecksValue: RegistryValue get() = Registry.get("vcs.background.commit.checks")
-internal fun isBackgroundCommitChecks(): Boolean = isBackgroundCommitChecksValue.asBoolean()
+fun isBackgroundCommitChecks(): Boolean = isBackgroundCommitChecksValue.asBoolean()
 
 abstract class NonModalCommitWorkflowHandler<W : NonModalCommitWorkflow, U : NonModalCommitWorkflowUi> :
   AbstractCommitWorkflowHandler<W, U>(),
@@ -157,12 +161,15 @@ abstract class NonModalCommitWorkflowHandler<W : NonModalCommitWorkflow, U : Non
       workflow.executeDefault {
         if (isSkipCommitChecks()) return@executeDefault ReturnResult.COMMIT
 
-        ui.commitProgressUi.startProgress()
+        val indicator = IndeterminateIndicator(ui.commitProgressUi.startProgress())
+        indicator.addStateDelegate(object : AbstractProgressIndicatorExBase() {
+          override fun cancel() = this@launch.cancel()
+        })
         try {
-          runAllHandlers(executor)
+          runAllHandlers(executor, indicator)
         }
         finally {
-          ui.commitProgressUi.endProgress()
+          indicator.stop()
         }
       }
     }
@@ -170,31 +177,31 @@ abstract class NonModalCommitWorkflowHandler<W : NonModalCommitWorkflow, U : Non
     return true
   }
 
-  private suspend fun runAllHandlers(executor: CommitExecutor?): ReturnResult {
-    workflow.runMetaHandlers()
+  private suspend fun runAllHandlers(executor: CommitExecutor?, indicator: ProgressIndicator): ReturnResult {
+    workflow.runMetaHandlers(indicator)
     FileDocumentManager.getInstance().saveAllDocuments()
 
     val handlersResult = workflow.runHandlers(executor)
     if (handlersResult != ReturnResult.COMMIT) return handlersResult
 
-    val checksResult = runCommitChecks()
+    val checksResult = runCommitChecks(indicator)
     if (checksResult != ReturnResult.COMMIT) isCommitChecksResultUpToDate = true
     return checksResult
   }
 
-  private suspend fun runCommitChecks(): ReturnResult {
+  private suspend fun runCommitChecks(indicator: ProgressIndicator): ReturnResult {
     var result = ReturnResult.COMMIT
 
     for (commitCheck in commitHandlers.filterNot { it is CheckinMetaHandler }.filterIsInstance<CommitCheck<*>>()) {
-      val problem = runCommitCheck(commitCheck)
+      val problem = runCommitCheck(commitCheck, indicator)
       if (problem != null) result = ReturnResult.CANCEL
     }
 
     return result
   }
 
-  private suspend fun <P : CommitProblem> runCommitCheck(commitCheck: CommitCheck<P>): P? {
-    val problem = workflow.runCommitCheck(commitCheck)
+  private suspend fun <P : CommitProblem> runCommitCheck(commitCheck: CommitCheck<P>, indicator: ProgressIndicator): P? {
+    val problem = workflow.runCommitCheck(commitCheck, indicator)
     problem?.let { ui.commitProgressUi.addCommitCheckFailure(it.text) { commitCheck.showDetails(it) } }
     return problem
   }
@@ -248,4 +255,9 @@ abstract class NonModalCommitWorkflowHandler<W : NonModalCommitWorkflow, U : Non
       updateDefaultCommitActionName()
     }
   }
+}
+
+private class IndeterminateIndicator(indicator: ProgressIndicatorEx) : DelegatingProgressIndicatorEx(indicator) {
+  override fun setIndeterminate(indeterminate: Boolean) = Unit
+  override fun setFraction(fraction: Double) = Unit
 }

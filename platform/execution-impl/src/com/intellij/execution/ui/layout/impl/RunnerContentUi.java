@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.ui.layout.impl;
 
 import com.intellij.execution.ExecutionBundle;
@@ -37,6 +37,7 @@ import com.intellij.openapi.wm.impl.content.SelectContentStep;
 import com.intellij.ui.*;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.awt.RelativeRectangle;
+import com.intellij.ui.components.TwoSideComponent;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.ui.content.*;
@@ -57,7 +58,6 @@ import com.intellij.util.Alarm;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.ui.AbstractLayoutManager;
 import com.intellij.util.ui.GraphicsUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -129,9 +129,9 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
   private boolean myUiLastStateWasRestored;
 
   private final Set<Object> myRestoreStateRequestors = new HashSet<>();
-  private String myTopLeftActionsPlace = ActionPlaces.UNKNOWN;
-  private String myTopMiddleActionsPlace = ActionPlaces.UNKNOWN;
-  private String myTopRightActionsPlace = ActionPlaces.UNKNOWN;
+  private String myTopLeftActionsPlace = "RunnerContentUI.topLeftToolbar";
+  private String myTopMiddleActionsPlace = "RunnerContentUI.topMiddleToolbar";
+  private String myTopRightActionsPlace = "RunnerContentUI.topRightToolbar";
   private final IdeFocusManager myFocusManager;
 
   private boolean myMinimizeActionEnabled = true;
@@ -649,7 +649,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
         myOriginal.myManager.addContent(content);
         GridCell cell = myOriginal.findCellFor(content);
         if (cell != null) {
-          myOriginal.restoreContent(content.getUserData(ViewImpl.ID));
+          myOriginal.restore(content);
           cell.minimize(content);
         }
       }
@@ -1066,11 +1066,11 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     return hasToolbarContent;
   }
 
-  private void setActions(Wrapper placeHolder, String place, DefaultActionGroup group) {
-    String adjustedPlace = place == ActionPlaces.UNKNOWN ? ActionPlaces.TOOLBAR : place;
-    ActionToolbar tb = myActionManager.createActionToolbar(adjustedPlace, group, true);
+  private void setActions(@NotNull Wrapper placeHolder, @NotNull String place, @NotNull DefaultActionGroup group) {
+    ActionToolbar tb = myActionManager.createActionToolbar(place, group, true);
     tb.setReservePlaceAutoPopupIcon(false);
-    tb.setTargetComponent(myComponent);
+    // see IDEA-262878, evaluate action on the toolbar should get the editor data context
+    tb.setTargetComponent(Registry.is("debugger.new.tool.window.layout") ? myComponent : null);
     tb.getComponent().setBorder(null);
     tb.getComponent().setOpaque(false);
 
@@ -1448,9 +1448,9 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     return map.computeIfAbsent(key, __ -> defaultPolicy);
   }
 
-  public @Nullable Content findContent(final String key) {
+  public @Nullable Content findContent(@NotNull String key) {
     final ContentManager manager = getContentManager();
-    if (manager == null || key == null) return null;
+    if (manager == null) return null;
 
     Content[] contents = manager.getContents();
     for (Content content : contents) {
@@ -1463,16 +1463,28 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     return null;
   }
 
-  public void restoreContent(final String key) {
+  private @Nullable Content findMinimizedContent(@NotNull String key) {
     for (AnAction action : myViewActions.getChildren(null)) {
       if (!(action instanceof RestoreViewAction)) continue;
 
       Content content = ((RestoreViewAction)action).getContent();
       if (key.equals(content.getUserData(ViewImpl.ID))) {
-        restore(content);
-        return;
+        return content;
       }
     }
+
+    return null;
+  }
+
+  public @Nullable Content findOrRestoreContentIfNeeded(@NotNull String key) {
+    Content content = findContent(key);
+    if (content == null) {
+      content = findMinimizedContent(key);
+      if (content != null) {
+        restore(content);
+      }
+    }
+    return content;
   }
 
   void setToDisposeRemovedContent(final boolean toDispose) {
@@ -1684,11 +1696,12 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
                       afterInitialized, false);
   }
 
-  private void processAttraction(final String contentId,
-                                 final Map<String, LayoutAttractionPolicy> policyMap,
-                                 final LayoutAttractionPolicy defaultPolicy,
-                                 final boolean afterInitialized,
-                                 final boolean activate) {
+  private void processAttraction(@Nullable String contentId,
+                                 @NotNull Map<String, LayoutAttractionPolicy> policyMap,
+                                 @NotNull LayoutAttractionPolicy defaultPolicy,
+                                 boolean afterInitialized,
+                                 boolean activate) {
+    if (contentId == null) return;
     IdeFocusManager.getInstance(getProject()).doWhenFocusSettlesDown(() -> myInitialized.processOnDone(() -> {
       Content content = findContent(contentId);
       if (content == null) return;
@@ -1734,7 +1747,6 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     getStateFor(content).setMinimizedInGrid(true);
     myManager.removeContent(content, false);
     saveUiState();
-    updateTabsUI(false);
   }
 
   public void restore(@NotNull Content content) {
@@ -1743,14 +1755,11 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
       getStateFor(content).assignTab(myLayoutSettings.getOrCreateTab(-1));
     }
     else {
-      //noinspection ConstantConditions
-      ((GridCellImpl)findCellFor(content)).restore(content);
+      grid.getCellFor(content).restore(content);
     }
     getStateFor(content).setMinimizedInGrid(false);
     myManager.addContent(content);
     saveUiState();
-    select(content, true);
-    updateTabsUI(false);
   }
 
   @Override
@@ -1813,85 +1822,6 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
         myTabs.getPresentation().setPaintBlocked(false, true);
       });
     });
-  }
-
-  private static final class TwoSideComponent extends NonOpaquePanel {
-    private TwoSideComponent(JComponent left, JComponent right) {
-      setLayout(new CommonToolbarLayout(left, right));
-      add(left);
-      add(right);
-    }
-  }
-
-  private static class CommonToolbarLayout extends AbstractLayoutManager {
-    private final JComponent myLeft;
-    private final JComponent myRight;
-
-    CommonToolbarLayout(final JComponent left, final JComponent right) {
-      myLeft = left;
-      myRight = right;
-    }
-
-    @Override
-    public Dimension preferredLayoutSize(final @NotNull Container parent) {
-
-      Dimension size = new Dimension();
-      Dimension leftSize = myLeft.getPreferredSize();
-      Dimension rightSize = myRight.getPreferredSize();
-
-      size.width = leftSize.width + rightSize.width;
-      size.height = Math.max(leftSize.height, rightSize.height);
-
-      return size;
-    }
-
-    @Override
-    public void layoutContainer(final @NotNull Container parent) {
-      Dimension size = parent.getSize();
-      Dimension prefSize = parent.getPreferredSize();
-      if (prefSize.width <= size.width) {
-        myLeft.setBounds(0, 0, myLeft.getPreferredSize().width, parent.getHeight());
-        Dimension rightSize = myRight.getPreferredSize();
-        myRight.setBounds(parent.getWidth() - rightSize.width, 0, rightSize.width, parent.getHeight());
-      }
-      else {
-        Dimension leftMinSize = myLeft.getMinimumSize();
-        Dimension rightMinSize = myRight.getMinimumSize();
-
-        // see IDEA-140557, always shrink left component last
-        int delta = 0;
-        //int delta = (prefSize.width - size.width) / 2;
-
-        myLeft.setBounds(0, 0, myLeft.getPreferredSize().width - delta, parent.getHeight());
-        int rightX = (int)myLeft.getBounds().getMaxX();
-        int rightWidth = size.width - rightX;
-        if (rightWidth < rightMinSize.width) {
-          Dimension leftSize = myLeft.getSize();
-          int diffToRightMin = rightMinSize.width - rightWidth;
-          if (leftSize.width - diffToRightMin >= leftMinSize.width) {
-            leftSize.width -= diffToRightMin;
-            myLeft.setSize(leftSize);
-          }
-        }
-
-        myRight.setBounds((int)myLeft.getBounds().getMaxX(), 0, parent.getWidth() - myLeft.getWidth(), parent.getHeight());
-      }
-
-      toMakeVerticallyInCenter(myLeft, parent);
-      toMakeVerticallyInCenter(myRight, parent);
-    }
-
-    private static void toMakeVerticallyInCenter(JComponent comp, Container parent) {
-      final Rectangle compBounds = comp.getBounds();
-      int compHeight = comp.getPreferredSize().height;
-      final int parentHeight = parent.getHeight();
-      if (compHeight > parentHeight) {
-        compHeight = parentHeight;
-      }
-
-      int y = (int)Math.floor(parentHeight / 2.0 - compHeight / 2.0);
-      comp.setBounds(compBounds.x, y, compBounds.width, compHeight);
-    }
   }
 
   @Override

@@ -1,13 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.layout
 
 import com.intellij.BundleBase
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ActionUtil
+import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.observable.properties.GraphProperty
@@ -388,6 +386,23 @@ abstract class Cell : BaseBuilder {
       .applyToComponent { bind(property) }
   }
 
+  fun scrollableTextArea(prop: KMutableProperty0<String>, rows: Int? = null): CellBuilder<JBTextArea> = scrollableTextArea(prop.toBinding(), rows)
+
+  fun scrollableTextArea(getter: () -> String, setter: (String) -> Unit, rows: Int? = null) = scrollableTextArea(PropertyBinding(getter, setter), rows)
+
+  fun scrollableTextArea(binding: PropertyBinding<String>, rows: Int? = null): CellBuilder<JBTextArea> {
+    val textArea = JBTextArea(binding.get(), rows ?: 0, 0)
+    val scrollPane = JBScrollPane(textArea)
+    return component(textArea, scrollPane)
+      .withTextBinding(binding)
+  }
+
+  fun scrollableTextArea(property: GraphProperty<String>, rows: Int? = null): CellBuilder<JBTextArea> {
+    return scrollableTextArea(property::get, property::set, rows)
+      .withGraphProperty(property)
+      .applyToComponent { bind(property) }
+  }
+
   fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
     return intTextField(prop.toBinding(), columns, range)
   }
@@ -510,6 +525,11 @@ abstract class Cell : BaseBuilder {
       .applyToComponent { bind(property) }
   }
 
+  fun actionButton(action: AnAction): CellBuilder<ActionButton> {
+    val actionButton = ActionButton(action, action.templatePresentation, ActionPlaces.UNKNOWN, ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE)
+    return actionButton()
+  }
+
   fun gearButton(vararg actions: AnAction): CellBuilder<JComponent> {
     val label = JLabel(LayeredIcon.GEAR_WITH_DROPDOWN)
     label.disabledIcon = AllIcons.General.GearPlain
@@ -590,6 +610,8 @@ abstract class Cell : BaseBuilder {
 
   abstract fun <T : JComponent> component(component: T): CellBuilder<T>
 
+  abstract fun <T : JComponent> component(component: T, viewComponent: JComponent): CellBuilder<T>
+
   operator fun <T : JComponent> T.invoke(
     vararg constraints: CCFlags,
     growPolicy: GrowPolicy? = null,
@@ -620,6 +642,10 @@ class InnerCell(val cell: Cell) : Cell() {
     return cell.component(component)
   }
 
+  override fun <T : JComponent> component(component: T, viewComponent: JComponent): CellBuilder<T> {
+    return cell.component(component, viewComponent)
+  }
+
   override fun withButtonGroup(title: String?, buttonGroup: ButtonGroup, body: () -> Unit) {
     cell.withButtonGroup(title, buttonGroup, body)
   }
@@ -635,7 +661,7 @@ fun <T> listCellRenderer(renderer: SimpleListCellRenderer<T?>.(value: T, index: 
   }
 }
 
-private fun <T> ComboBox<T>.bind(property: GraphProperty<T>) {
+fun <T> ComboBox<T>.bind(property: GraphProperty<T>) {
   val mutex = AtomicBoolean()
   property.afterChange {
     mutex.lockOrSkip {
@@ -655,7 +681,7 @@ private fun <T> ComboBox<T>.bind(property: GraphProperty<T>) {
 private val TextFieldWithBrowseButton.emptyText
   get() = (textField as JBTextField).emptyText
 
-private fun StatusText.bind(property: GraphProperty<String>) {
+fun StatusText.bind(property: GraphProperty<String>) {
   text = property.get()
   property.afterChange {
     text = it
@@ -665,11 +691,11 @@ private fun StatusText.bind(property: GraphProperty<String>) {
   }
 }
 
-private fun TextFieldWithBrowseButton.bind(property: GraphProperty<String>) {
+fun TextFieldWithBrowseButton.bind(property: GraphProperty<String>) {
   textField.bind(property)
 }
 
-private fun JTextComponent.bind(property: GraphProperty<String>) {
+fun JTextComponent.bind(property: GraphProperty<String>) {
   val mutex = AtomicBoolean()
   property.afterChange {
     mutex.lockOrSkip {

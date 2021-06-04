@@ -10,18 +10,24 @@ import com.intellij.ide.browsers.WebBrowserXmlService;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.ui.AppUIUtil;
 import com.intellij.ui.scale.ScaleContext;
 import com.intellij.util.BitUtil;
 import com.intellij.util.Url;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.event.InputEvent;
 import java.util.Collection;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.intellij.ide.browsers.OpenInBrowserRequestKt.createOpenInBrowserRequest;
 
@@ -37,6 +43,7 @@ class OpenHtmlInEmbeddedBrowserAction extends DumbAwareAction {
   public void actionPerformed(@NotNull AnActionEvent event) {
     Project project = event.getRequiredData(CommonDataKeys.PROJECT);
     PsiFile psiFile = event.getRequiredData(CommonDataKeys.PSI_FILE);
+    VirtualFile virtualFile = psiFile.getVirtualFile();
     boolean preferLocalFileUrl = BitUtil.isSet(event.getModifiers(), InputEvent.SHIFT_MASK);
 
     try {
@@ -44,13 +51,21 @@ class OpenHtmlInEmbeddedBrowserAction extends DumbAwareAction {
       if (browserRequest == null) return;
       Collection<Url> urls = WebBrowserService.getInstance().getUrlsToOpen(browserRequest, preferLocalFileUrl);
       if (!urls.isEmpty()) {
-        BaseOpenInBrowserActionKt.chooseUrl(urls).onSuccess((url) -> {
-          OpenInRightSplitAction.Companion.openInRightSplit(
-            project,
-            new WebPreviewVirtualFile(psiFile.getVirtualFile(), url),
-            null,
-            false
-          );
+        //hack to disable reload
+        List<Url> processedUrls = ContainerUtil.map(urls, el -> el.removeParameter("_ij_reload"));
+        
+        BaseOpenInBrowserActionKt.chooseUrl(processedUrls).onSuccess((url) -> {
+          WebPreviewVirtualFile file = new WebPreviewVirtualFile(virtualFile, url);
+          if (!FileEditorManager.getInstance(project).isFileOpen(file)) {
+            OpenInRightSplitAction.Companion.openInRightSplit(
+              project,
+              file,
+              null,
+              false
+            );
+          } else {
+            FileEditorManagerEx.getInstanceEx(project).openFileWithProviders(file, false, true);
+          }
         });
       }
     }
@@ -64,7 +79,7 @@ class OpenHtmlInEmbeddedBrowserAction extends DumbAwareAction {
     OpenInBrowserRequest request = BaseOpenInBrowserAction.doUpdate(e);
     Project project = e.getProject();
     PsiFile psiFile = e.getData(CommonDataKeys.PSI_FILE);
-    boolean enabled = project != null && psiFile != null && request != null;
+    boolean enabled = project != null && psiFile != null && request != null && psiFile.getVirtualFile() != null;
     e.getPresentation().setEnabledAndVisible(enabled);
     if (!enabled) return;
 

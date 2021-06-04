@@ -21,13 +21,10 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiLanguageInjectionHost;
 import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.testFramework.LightProjectDescriptor;
 import com.jetbrains.python.fixtures.PyTestCase;
-import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyExpression;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -37,30 +34,6 @@ import java.util.List;
  * @author vlan
  */
 public class PyTypingTest extends PyTestCase {
-  @Nullable
-  @Override
-  protected LightProjectDescriptor getProjectDescriptor() {
-    return ourPy3Descriptor;
-  }
-
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    setLanguageLevel(LanguageLevel.PYTHON34);
-  }
-
-  @Override
-  public void tearDown() throws Exception {
-    try {
-      setLanguageLevel(null);
-    }
-    catch (Throwable e) {
-      addSuppressedException(e);
-    }
-    finally {
-      super.tearDown();
-    }
-  }
 
   public void testClassType() {
     doTest("Foo",
@@ -80,7 +53,6 @@ public class PyTypingTest extends PyTestCase {
            "    pass\n" +
            "\n" +
            "expr = f()\n");
-
   }
 
   public void testNoneType() {
@@ -113,7 +85,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testBuiltinListWithParameter() {
-    doTest("List[int]",
+    doTest("list[int]",
            "from typing import List\n" +
            "\n" +
            "def f(expr: List[int]):\n" +
@@ -121,7 +93,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testBuiltinDictWithParameters() {
-    doTest("Dict[str, int]",
+    doTest("dict[str, int]",
            "from typing import Dict\n" +
            "\n" +
            "def f(expr: Dict[str, int]):\n" +
@@ -137,7 +109,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testBuiltinTupleWithParameters() {
-    doTest("Tuple[int, str]",
+    doTest("tuple[int, str]",
            "from typing import Tuple\n" +
            "\n" +
            "def f(expr: Tuple[int, str]):\n" +
@@ -321,7 +293,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testMultiAssignmentComment() {
-    doTest("Tuple[int, str]",
+    doTest("tuple[int, str]",
            "def foo(x):\n" +
            "    c1, c2 = x  # type: int, str\n" +
            "    expr = c1, c2\n");
@@ -329,7 +301,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-19220
   public void testMultiLineAssignmentComment() {
-    doTest("List[str]",
+    doTest("list[str]",
            "from typing import List\n" +
            "\n" +
            "expr = [\n" +
@@ -465,7 +437,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-22620
   public void testVariableTypeCommentInjectionTuple() {
-    doTestInjectedText("x, y = undefined()  # type: int,<caret> int", 
+    doTestInjectedText("x, y = undefined()  # type: int,<caret> int",
                        "int, int");
   }
 
@@ -483,14 +455,14 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-22620
   public void testVariableTypeCommentInjectionParenthesisedTuple() {
-    doTestInjectedText("x, y = undefined()  # type: (int,<caret> int)", 
+    doTestInjectedText("x, y = undefined()  # type: (int,<caret> int)",
                        "(int, int)");
   }
 
   // PY-22620
   public void testForTypeCommentInjectionTuple() {
     doTestInjectedText("for x, y in undefined():  # type: int,<caret> int\n" +
-                       "    pass", 
+                       "    pass",
                        "int, int");
   }
 
@@ -530,17 +502,17 @@ public class PyTypingTest extends PyTestCase {
   public void testGenericField() {
     doTest("str",
            "from typing import TypeVar, Generic\n" +
-           "\n"                                    +
-           "T = TypeVar('T', covariant=True)\n"    +
-           "\n"                                    +
-           "class C(Generic[T]):\n"                +
-           "    def __init__(self, foo: T):\n"     +
-           "        self.foo = foo\n"              +
-           "\n"                                    +
-           "def f() -> C[str]:\n"                  +
-           "    return C('test')\n"                +
-           "\n"                                    +
-           "x = f()\n"                             +
+           "\n" +
+           "T = TypeVar('T', covariant=True)\n" +
+           "\n" +
+           "class C(Generic[T]):\n" +
+           "    def __init__(self, foo: T):\n" +
+           "        self.foo = foo\n" +
+           "\n" +
+           "def f() -> C[str]:\n" +
+           "    return C('test')\n" +
+           "\n" +
+           "x = f()\n" +
            "expr = x.foo\n");
   }
 
@@ -555,10 +527,10 @@ public class PyTypingTest extends PyTestCase {
            "def f(expr: Type):\n" +
            "    pass\n");
   }
-  
+
   // PY-18254
   public void testFunctionTypeComment() {
-    doTest("(x: int, args: Tuple[float, ...], kwargs: Dict[str, str]) -> List[bool]",
+    doTest("(x: int, args: tuple[float, ...], kwargs: dict[str, str]) -> list[bool]",
            "from typing import List\n" +
            "\n" +
            "def f(x, *args, **kwargs):\n" +
@@ -576,7 +548,6 @@ public class PyTypingTest extends PyTestCase {
            "    def m(some_int, some_bool, some_str):\n" +
            "        # type: (int, bool, str) -> bool\n" +
            "        expr = some_int");
-
   }
 
   // PY-18726
@@ -615,7 +586,6 @@ public class PyTypingTest extends PyTestCase {
            "def f(cb):\n" +
            "    # type: (Callable[Tuple[bool, str], int]) -> None\n" +
            "    expr = cb");
-
   }
 
   // PY-18726
@@ -626,22 +596,21 @@ public class PyTypingTest extends PyTestCase {
            "def f(cb):\n" +
            "    # type: (Callable[[bool, int], [int]]) -> None\n" +
            "    expr = cb");
-
   }
 
   // PY-18598
   public void testFunctionTypeCommentEllipsisParameters() {
-   doTest("(x: Any, y: Any, z: Any) -> int",
-          "def f(x, y=42, z='foo'):\n" +
-          "    # type: (...) -> int \n" +
-          "    pass\n" +
-          "\n" +
-          "expr = f");
+    doTest("(x: Any, y: Any, z: Any) -> int",
+           "def f(x, y=42, z='foo'):\n" +
+           "    # type: (...) -> int \n" +
+           "    pass\n" +
+           "\n" +
+           "expr = f");
   }
 
   // PY-20421
   public void testFunctionTypeCommentSingleElementTuple() {
-    doTest("Tuple[int]",
+    doTest("tuple[int]",
            "from typing import Tuple\n" +
            "\n" +
            "def f():\n" +
@@ -653,7 +622,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-18762
   public void testHomogeneousTuple() {
-    doTest("Tuple[int, ...]",
+    doTest("tuple[int, ...]",
            "from typing import Tuple\n" +
            "\n" +
            "def f(xs: Tuple[int, ...]):\n" +
@@ -682,7 +651,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-18762
   public void testHomogeneousTupleMultiplication() {
-    doTest("Tuple[int, ...]",
+    doTest("tuple[int, ...]",
            "from typing import Tuple\n" +
            "\n" +
            "xs = unknown() # type: Tuple[int, ...]\n" +
@@ -691,7 +660,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-18762
   public void testFunctionTypeCommentHomogeneousTuple() {
-    doTest("Tuple[int, ...]",
+    doTest("tuple[int, ...]",
            "from typing import Tuple\n" +
            "\n" +
            "def f(xs):\n" +
@@ -720,7 +689,7 @@ public class PyTypingTest extends PyTestCase {
            "\n" +
            "expr = f");
   }
-  
+
   // PY-18386
   public void testRecursiveType() {
     doTest("Union[int, Any]",
@@ -732,7 +701,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-18386
   public void testRecursiveType2() {
-    doTest("Dict[str, Union[Union[str, int, float], Any]]",
+    doTest("dict[str, Union[Union[str, int, float], Any]]",
            "from typing import Dict, Union\n" +
            "\n" +
            "JsonDict = Dict[str, Union[str, int, float, 'JsonDict']]\n" +
@@ -773,7 +742,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-19858
   public void testGetSublistBySlice() {
-    doTest("List[list]",
+    doTest("list[list]",
            "from typing import List\n" +
            "\n" +
            "def foo(x: List[List]):\n" +
@@ -782,7 +751,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-19858
   public void testGetSublistByIndirectSlice() {
-    doTest("List[list]",
+    doTest("list[list]",
            "from typing import List\n" +
            "\n" +
            "def foo(x: List[List]):\n" +
@@ -792,7 +761,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-19858
   public void testGetListItemByUnknown() {
-    doTest("Union[list, List[list]]",
+    doTest("Union[list, list[list]]",
            "from typing import List\n" +
            "\n" +
            "def foo(x: List[List]):\n" +
@@ -913,7 +882,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testIllegalAnnotationTargets() {
-    doTest("Tuple[Any, int, Any, Any]",
+    doTest("tuple[Any, int, Any, Any]",
            "(w, _): Tuple[int, Any]\n" +
            "((x)): int\n" +
            "y: bool = z = undefined()\n" +
@@ -922,28 +891,28 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-19723
   public void testAnnotatedPositionalArgs() {
-    doTest("Tuple[str, ...]",
+    doTest("tuple[str, ...]",
            "def foo(*args: str):\n" +
            "    expr = args\n");
   }
 
   // PY-19723
   public void testAnnotatedKeywordArgs() {
-    doTest("Dict[str, int]",
+    doTest("dict[str, int]",
            "def foo(**kwargs: int):\n" +
            "    expr = kwargs\n");
   }
 
   // PY-19723
   public void testTypeCommentedPositionalArgs() {
-    doTest("Tuple[str, ...]",
+    doTest("tuple[str, ...]",
            "def foo(*args  # type: str\n):\n" +
            "    expr = args\n");
   }
 
   // PY-19723
   public void testTypeCommentedKeywordArgs() {
-    doTest("Dict[str, int]",
+    doTest("dict[str, int]",
            "def foo(**kwargs  # type: int\n):\n" +
            "    expr = kwargs\n");
   }
@@ -965,32 +934,26 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testAsyncGeneratorAnnotation() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTest("AsyncGenerator[int, str]",
-                   "from typing import AsyncGenerator\n" +
-                   "\n" +
-                   "async def g() -> AsyncGenerator[int, str]:\n" +
-                   "    s = (yield 42)\n" +
-                   "    \n" +
-                   "expr = g()")
-    );
+    doTest("AsyncGenerator[int, str]",
+           "from typing import AsyncGenerator\n" +
+           "\n" +
+           "async def g() -> AsyncGenerator[int, str]:\n" +
+           "    s = (yield 42)\n" +
+           "    \n" +
+           "expr = g()");
   }
 
   public void testCoroutineReturnsGenerator() {
-    runWithLanguageLevel(
-      LanguageLevel.PYTHON36,
-      () -> doTest("Coroutine[Any, Any, Generator[int, Any, Any]]",
-                   "from typing import Generator\n" +
-                   "\n" +
-                   "async def coroutine() -> Generator[int, Any, Any]:\n" +
-                   "    def gen():\n" +
-                   "        yield 42\n" +
-                   "    \n" +
-                   "    return gen()\n" +
-                   "    \n" +
-                   "expr = coroutine()")
-    );
+    doTest("Coroutine[Any, Any, Generator[int, Any, Any]]",
+           "from typing import Generator\n" +
+           "\n" +
+           "async def coroutine() -> Generator[int, Any, Any]:\n" +
+           "    def gen():\n" +
+           "        yield 42\n" +
+           "    \n" +
+           "    return gen()\n" +
+           "    \n" +
+           "expr = coroutine()");
   }
 
   public void testGenericRenamedParameter() {
@@ -1022,7 +985,7 @@ public class PyTypingTest extends PyTestCase {
            "def f(x: Type[MyClass]): \n" +
            "    expr = x");
   }
-  
+
   // PY-20057
   public void testConstrainedClassObjectTypeOfParam() {
     doTest("Type[T]",
@@ -1033,7 +996,7 @@ public class PyTypingTest extends PyTestCase {
            "def f(x: Type[T]):\n" +
            "    expr = x");
   }
-  
+
   // PY-20057
   public void testFunctionCreatesInstanceFromType() {
     doTest("int",
@@ -1068,7 +1031,7 @@ public class PyTypingTest extends PyTestCase {
            "def f(x: Type):\n" +
            "    expr = x");
   }
-  
+
   // PY-20057
   public void testTypingTypeOfAnyMapsToBuiltinType() {
     doTest("type",
@@ -1080,13 +1043,13 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-20057
   public void testIllegalTypingTypeFormat() {
-    doTest("Tuple[Any, Any, Any]",
+    doTest("tuple[Any, Any, Any]",
            "from typing import Type, Tuple\n" +
            "\n" +
            "def f(x: Tuple[Type[42], Type[], Type[unresolved]]):\n" +
            "    expr = x");
   }
-  
+
   // PY-20057
   public void testUnionOfClassObjectTypes() {
     doTest("Type[Union[int, str]]",
@@ -1121,7 +1084,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testGenericUserFunctionWithManyParamsAndNestedCall() {
-    doTest("Tuple[bool, int, str]",
+    doTest("tuple[bool, int, str]",
            "from typing import TypeVar\n" +
            "\n" +
            "T = TypeVar('T')\n" +
@@ -1511,6 +1474,9 @@ public class PyTypingTest extends PyTestCase {
 
     doTestNoInjectedText("from typing import Literal, TypeAlias\n" +
                          "MyType: TypeAlias = Literal[42, \"f<caret>oo\", True]\n");
+
+    doTestNoInjectedText("import typing\n" +
+                         "a: typing.Literal[\"f<caret>oo\"]\n");
   }
 
   // PY-41847
@@ -1529,31 +1495,23 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-41847
   public void testTypingAnnotated() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> {
-        doTest("int",
-               "from typing import Annotated\n" +
-               "A = Annotated[int, 'Some constraint']\n" +
-               "expr: A");
-        doTest("int",
-               "from typing_extensions import Annotated\n" +
-               "expr: Annotated[int, 'Some constraint'] = '5'");
-        doMultiFileStubAwareTest("int",
-                                 "from annotated import A\n" +
-                                 "expr: A = 'str'");
-      }
-    );
+    doTest("int",
+           "from typing import Annotated\n" +
+           "A = Annotated[int, 'Some constraint']\n" +
+           "expr: A");
+    doTest("int",
+           "from typing_extensions import Annotated\n" +
+           "expr: Annotated[int, 'Some constraint'] = '5'");
+    doMultiFileStubAwareTest("int",
+                             "from annotated import A\n" +
+                             "expr: A = 'str'");
   }
 
   // PY-35370
   public void testAnyArgumentsCallableInTypeComment() {
-    runWithLanguageLevel(
-      LanguageLevel.getLatest(),
-      () -> doTestInjectedText("from typing import Callable\n" +
-                               "a = b  # type: Call<caret>able[..., int]",
-                               "Callable[..., int]")
-    );
+    doTestInjectedText("from typing import Callable\n" +
+                       "a = b  # type: Call<caret>able[..., int]",
+                       "Callable[..., int]");
   }
 
   // PY-42334
