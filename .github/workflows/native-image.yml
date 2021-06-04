@@ -12,4 +12,4 @@ jobs:
           native-image: "true"
       - name: version
         run: |
-          ant
+          ls -al
