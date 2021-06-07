@@ -1,6 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actionsOnSave;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.diagnostic.Logger;
@@ -63,7 +64,7 @@ class ActionOnSaveColumnInfo extends SameRendererAndEditorColumnInfo<ActionOnSav
     if (info.isSaveActionApplicable()) {
       // This anchorCheckBox is not painted and doesn't appear in the UI component hierarchy. Its purpose is to make sure that the preferred
       // size of the real checkBox is calculated correctly. The problem is that com.intellij.ide.ui.laf.darcula.ui.DarculaCheckBoxBorder.getBorderInsets()
-      // returns different result for a check box that has CellRendererPane class as its UI ancestor. But we need TableCellEditor and
+      // returns different result for a checkbox that has CellRendererPane class as its UI ancestor. We need TableCellEditor and
       // TableCellRenderer to look 100% identically.
       JCheckBox anchorCheckBox = new JCheckBox(info.getActionOnSaveName());
 
@@ -78,28 +79,23 @@ class ActionOnSaveColumnInfo extends SameRendererAndEditorColumnInfo<ActionOnSav
           return;
         }
 
-        if (info.getConfigurableIfItsUiComponentInitialized() == null) {
-          ActionsOnSaveConfigurable.updateInfoIfConfigurableUiComponentInitialized(settings, info, true);
-        }
-
         info.setActionOnSaveEnabled(checkBox.isSelected());
         int row = table.getEditingRow();
         int column = table.getEditingColumn();
         if (row >= 0 && column >= 0) {
-          // Comment under the check box may depend on the check box state. Need to re-create the cell editor component.
+          // Comment under the checkbox may depend on the checkbox state. Need to re-create the cell editor component.
           table.stopEditing();
           table.editCellAt(row, column);
-        }
-
-        if (info.myConfigurableId != null) {
-          settings.checkModified(info.myConfigurableId);
         }
       });
 
       ComponentPanelBuilder builder = UI.PanelFactory.panel(checkBox);
-      if (info.getComment() != null) {
-        builder.withComment(info.getComment().getCommentText(), false);
-        // TODO add warning icon to the comment if needed
+      ActionOnSaveComment comment = info.getComment();
+      if (comment != null) {
+        builder.withComment(comment.getCommentText(), false);
+        if (comment.isWarning()) {
+          builder.withCommentIcon(AllIcons.General.Warning);
+        }
       }
 
       return builder.createPanel();
@@ -108,7 +104,7 @@ class ActionOnSaveColumnInfo extends SameRendererAndEditorColumnInfo<ActionOnSav
 
     JPanel panel = new JPanel(new GridLayout(2, 1, 0, JBUI.scale(3)));
 
-    // The label should have the same indent as the check box text
+    // The label should have the same indent as the checkbox text
     int leftInsetScaled = UIUtil.getCheckBoxTextHorizontalOffset(new JCheckBox(info.getActionOnSaveName())); // already scaled
     //noinspection UseDPIAwareBorders - already scaled
     panel.setBorder(new EmptyBorder(0, leftInsetScaled, 0, 0));
@@ -117,9 +113,13 @@ class ActionOnSaveColumnInfo extends SameRendererAndEditorColumnInfo<ActionOnSav
     // disabled label looks just the same as its comment on Windows, so `setEnabled(false)` is not called for this `label`
     panel.add(label);
 
-    if (info.getComment() != null) {
-      panel.add(ComponentPanelBuilder.createCommentComponent(info.getComment().getCommentText(), true, -1, false));
-      // TODO add warning icon to the comment if needed
+    ActionOnSaveComment comment = info.getComment();
+    if (comment != null) {
+      JLabel commentComponent = ComponentPanelBuilder.createCommentComponent(comment.getCommentText(), true, -1, false);
+      if (comment.isWarning()) {
+        commentComponent.setIcon(AllIcons.General.Warning);
+      }
+      panel.add(commentComponent);
     }
 
     return panel;
