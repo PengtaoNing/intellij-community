@@ -6,12 +6,14 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         name: checkout idea
+        with:
+          ref: 211.6305
       - uses: actions/checkout@v2
         name: checkout android
         with:
           repository: PengtaoNing/android
           path: android
-          ref: master
+          ref: 211.6305
       - name: setup-graalvm-ce
         uses: rinx/setup-graalvm-ce@v0.0.5
         with:
