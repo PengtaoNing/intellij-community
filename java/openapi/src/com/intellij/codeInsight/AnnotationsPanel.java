@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight;
 
 import com.intellij.core.JavaPsiBundle;
@@ -7,7 +7,7 @@ import com.intellij.ide.util.ClassFilter;
 import com.intellij.ide.util.TreeClassChooser;
 import com.intellij.ide.util.TreeClassChooserFactory;
 import com.intellij.java.JavaBundle;
-import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.search.GlobalSearchScope;
@@ -15,20 +15,16 @@ import com.intellij.ui.*;
 import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.JBDimension;
-import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UI;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableColumnModel;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableColumn;
+import javax.swing.table.*;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.awt.event.MouseEvent;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 
 public class AnnotationsPanel {
   private final Project myProject;
@@ -37,6 +33,7 @@ public class AnnotationsPanel {
   private final JBTable myTable;
   private final JPanel myComponent;
   protected final DefaultTableModel myTableModel;
+  private final TableRowSorter<DefaultTableModel> mySorter;
 
   public AnnotationsPanel(Project project,
                           @NonNls String name,
@@ -76,7 +73,9 @@ public class AnnotationsPanel {
                                            int column) {
         append((String)value, SimpleTextAttributes.REGULAR_ATTRIBUTES);
         if (value.equals(myDefaultAnnotation)) {
-          setIcon(AllIcons.Actions.Forward);
+          setIcon(AllIcons.Actions.SetDefault);
+          append(" ");
+          append(JavaBundle.message("annotations.panel.used.for.code.generation"), SimpleTextAttributes.GRAYED_ATTRIBUTES);
         }
         else {
           setIcon(EmptyIcon.ICON_16);
@@ -85,6 +84,39 @@ public class AnnotationsPanel {
     }, null));
 
     myTable = new JBTable(myTableModel, columnModel);
+    mySorter = new TableRowSorter<>(myTableModel);
+    mySorter.setSortKeys(List.of(new RowSorter.SortKey(0, SortOrder.DESCENDING)));
+    myTable.setRowSorter(mySorter);
+    if (!showInstrumentationOptions) myTable.setTableHeader(null);
+    mySorter.sort();
+
+    new DoubleClickListener() {
+      @Override
+      protected boolean onDoubleClick(@NotNull MouseEvent event) {
+        int row = myTable.getSelectedRow();
+        String annotation = (String) myTable.getValueAt(row, 0);
+        if (annotation != null) {
+          myDefaultAnnotation = annotation;
+          myTableModel.fireTableRowsUpdated(row, row);
+        }
+        return true;
+      }
+    }.installOn(myTable);
+
+    myTable.addMouseListener(new PopupHandler() {
+      @Override
+      public void invokePopup(Component comp, int x, int y) {
+        final DefaultActionGroup group = new DefaultActionGroup();
+        group.add(new AnAction(JavaBundle.message("annotations.panel.use.for.code.generation")) {
+          @Override
+          public void actionPerformed(@NotNull AnActionEvent e) {
+            myDefaultAnnotation = getSelectedAnnotation();
+          }
+        });
+        final ActionPopupMenu popupMenu = ActionManager.getInstance().createActionPopupMenu("", group);
+        popupMenu.getComponent().show(myTable, x, y);
+      }
+    });
 
     if (showInstrumentationOptions) {
       columnModel.getColumn(0).setHeaderValue(JavaPsiBundle.message("node.annotation.tooltip"));
@@ -118,7 +150,7 @@ public class AnnotationsPanel {
 
     final AnActionButton selectButton =
       new AnActionButton(JavaBundle.messagePointer("action.AnActionButton.text.select.annotation.used.for.code.generation"),
-                         AllIcons.Actions.Checked) {
+                         AllIcons.Actions.SetDefault) {
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
           String selectedValue = getSelectedAnnotation();
@@ -145,24 +177,31 @@ public class AnnotationsPanel {
           if (selectedValue == null) return;
           if (myDefaultAnnotation.equals(selectedValue)) myDefaultAnnotation = (String)myTable.getValueAt(0, 0);
 
-          myTableModel.removeRow(myTable.getSelectedRow());
+          int rowIndex = -1;
+          for (int i = 0; i < myTableModel.getDataVector().size(); i++) {
+            if (myTableModel.getDataVector().get(i).contains(selectedValue)) {
+              rowIndex = i;
+              break;
+            }
+          }
+          if (rowIndex != -1) myTableModel.removeRow(rowIndex);
         }
       })
       .setRemoveActionUpdater(e -> !myDefaultAnnotations.contains(getSelectedAnnotation()));
     if (showDefaultActions) {
       toolbarDecorator.addExtraAction(selectButton);
     }
-    final JPanel panel = toolbarDecorator.createPanel();
-    myComponent = new JPanel(new BorderLayout());
-    myComponent.setBorder(IdeBorderFactory.createTitledBorder(JavaBundle.message("nullable.notnull.annotations.panel.title", name), false, JBUI.insetsTop(10)));
-    myComponent.add(panel);
+    myComponent = UI.PanelFactory
+      .panel(toolbarDecorator.createPanel())
+      .withLabel(JavaBundle.message("nullable.notnull.annotations.panel.title", name))
+      .moveLabelOnTop()
+      .resizeY(true)
+      .createPanel();
     myComponent.setPreferredSize(new JBDimension(myComponent.getPreferredSize().width, 200));
 
     myTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     myTable.setRowSelectionAllowed(true);
     myTable.setShowGrid(false);
-
-    selectAnnotation(myDefaultAnnotation);
   }
 
   private void addRow(String annotation, boolean checked) {
@@ -200,6 +239,10 @@ public class AnnotationsPanel {
     final String qualifiedName = selected.getQualifiedName();
     if (selectAnnotation(qualifiedName) == null) {
       addRow(qualifiedName, false);
+      mySorter.sort();
+      Object added = selectAnnotation(qualifiedName);
+      assert added != null;
+      myTable.scrollRectToVisible(myTable.getCellRect((int)added, 0, true));
     }
   }
 

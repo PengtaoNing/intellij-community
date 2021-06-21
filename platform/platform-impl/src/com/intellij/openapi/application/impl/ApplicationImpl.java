@@ -19,6 +19,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.application.ex.ApplicationUtil;
+import com.intellij.openapi.client.ClientAwareComponentManager;
 import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments;
@@ -60,7 +61,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @ApiStatus.Internal
-public class ApplicationImpl extends ComponentManagerImpl implements ApplicationEx {
+public class ApplicationImpl extends ClientAwareComponentManager implements ApplicationEx {
   // do not use PluginManager.processException() because it can force app to exit, but we want just log error and continue
   private static final Logger LOG = Logger.getInstance(ApplicationImpl.class);
 
@@ -1001,7 +1002,7 @@ public class ApplicationImpl extends ComponentManagerImpl implements Application
   public void assertIsDispatchThread() {
     if (isDispatchThread()) return;
     if (ShutDownTracker.isShutdownHookRunning()) return;
-    throwThreadAccessException("Access is allowed from event dispatch thread with IW lock only.");
+    throwThreadAccessException("Access is allowed from event dispatch thread only");
   }
 
   @Override
@@ -1012,29 +1013,21 @@ public class ApplicationImpl extends ComponentManagerImpl implements Application
     throwThreadAccessException("Access from event dispatch thread is not allowed.");
   }
 
-  @Override
-  public void assertIsWriteThread() {
-    if (isWriteThread()) return;
-    if (ShutDownTracker.isShutdownHookRunning()) return;
-    assertIsWriteThread("Access is allowed from write thread only.");
-  }
-
   private static void throwThreadAccessException(@NotNull String message) {
     throw new RuntimeExceptionWithAttachments(
       message,
       "EventQueue.isDispatchThread()=" + EventQueue.isDispatchThread() +
-      " Toolkit.getEventQueue()=" + Toolkit.getDefaultToolkit().getSystemEventQueue() +
       "\nCurrent thread: " + describe(Thread.currentThread()) +
       "\nSystemEventQueueThread: " + describe(getEventQueueThread()),
       new Attachment("threadDump.txt", ThreadDumper.dumpThreadsToString()));
   }
 
-  private void assertIsWriteThread(@NotNull String message) {
+  public void assertIsWriteThread() {
     if (isWriteThread()) return;
+    if (ShutDownTracker.isShutdownHookRunning()) return;
     throw new RuntimeExceptionWithAttachments(
-      message,
+      "Access is allowed from write thread only.",
       "EventQueue.isDispatchThread()=" + EventQueue.isDispatchThread() +
-      " Toolkit.getEventQueue()=" + Toolkit.getDefaultToolkit().getSystemEventQueue() +
       "\nCurrent thread: " + describe(Thread.currentThread()) +
       "\nWrite thread: " + describe(myLock.writeThread),
       new Attachment("threadDump.txt", ThreadDumper.dumpThreadsToString()));
@@ -1118,9 +1111,7 @@ public class ApplicationImpl extends ComponentManagerImpl implements Application
   }
 
   private void startWrite(@NotNull Class<?> clazz) {
-    if (!isWriteAccessAllowed()) {
-      assertIsWriteThread("Write access is allowed from write thread only");
-    }
+    assertIsWriteThread();
     boolean writeActionPending = myWriteActionPending;
     myWriteActionPending = true;
     try {
@@ -1229,6 +1220,9 @@ public class ApplicationImpl extends ComponentManagerImpl implements Application
     }
   }
 
+  /**
+   * @deprecated use {@link #runReadAction(Runnable)} instead
+   */
   @Deprecated
   private final class ReadAccessToken extends AccessToken {
     private final ReadMostlyRWLock.Reader myReader;

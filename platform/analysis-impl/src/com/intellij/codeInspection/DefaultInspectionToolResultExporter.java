@@ -99,7 +99,7 @@ public class DefaultInspectionToolResultExporter implements InspectionToolResult
   protected void writeOutput(CommonProblemDescriptor @NotNull [] descriptions, @NotNull RefEntity refElement) throws IOException {
     InspectionEP inspectionEP = myToolWrapper.getExtension();
     synchronized (inspectionEP != null ? inspectionEP : WRITER_LOCK) {
-      Path file = InspectionsResultUtil.getInspectionResultFile(myContext.getOutputPath(), myToolWrapper.getShortName());
+      Path file = InspectionsResultUtil.getInspectionResultPath(myContext.getOutputPath(), myToolWrapper.getShortName());
       boolean exists = Files.exists(file);
       if (!exists && !Files.isDirectory(file.getParent())) {
         Files.createDirectories(file.getParent());
@@ -457,7 +457,8 @@ public class DefaultInspectionToolResultExporter implements InspectionToolResult
         VirtualFile file = ((ProblemDescriptorBase)d).getContainingFile();
         if (file != null) {
           LOG.assertTrue(ensureNotInjectedFile(file).equals(entityFile),
-                         "descriptor and containing entity files should be the same; descriptor: " + d.getDescriptionTemplate());
+                         "descriptor and containing entity files should be the same; descriptor: " + d.getDescriptionTemplate() + 
+                         ", entityFile: " + entityFile.getName());
         }
       }
     }

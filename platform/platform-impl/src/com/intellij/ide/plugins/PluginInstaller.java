@@ -102,7 +102,7 @@ public final class PluginInstaller {
 
       uninstalledWithoutRestart = parentComponent != null ?
                                   DynamicPlugins.unloadPluginWithProgress(null, parentComponent, pluginDescriptor, options) :
-                                  DynamicPlugins.unloadPlugin(pluginDescriptor, options);
+                                  DynamicPlugins.INSTANCE.unloadPlugin(pluginDescriptor, options);
     }
 
     Path pluginPath = pluginDescriptor.getPluginPath();
@@ -216,12 +216,13 @@ public final class PluginInstaller {
     PluginStateManager.addStateListener(listener);
   }
 
-  static boolean installFromDisk(@Nullable Project project,
-                                 @NotNull File file) {
+  static boolean installFromDisk(@NotNull File file,
+                                 @Nullable Project project,
+                                 @Nullable JComponent parent) {
     return installFromDisk(new InstalledPluginsTableModel(project),
                            PluginEnabler.HEADLESS,
                            file,
-                           null,
+                           parent,
                            PluginInstaller::installPluginFromCallbackData);
   }
 
@@ -276,7 +277,7 @@ public final class PluginInstaller {
                                                             installedPlugin != null ? installedPlugin.getVersion() : null);
 
       if (Registry.is("marketplace.certificate.signature.check")) {
-        if (!PluginSignatureChecker.verifyPluginByAllCertificates(pluginDescriptor, file, true)) {
+        if (!PluginSignatureChecker.verify(pluginDescriptor, file, true)) {
           return false;
         }
       }
@@ -292,7 +293,7 @@ public final class PluginInstaller {
                                                                           CustomPluginRepositoryService.getInstance()
                                                                             .getCustomRepositoryPlugins(),
                                                                           pluginEnabler,
-                                                                          ProgressManager.getInstance().getProgressIndicator());
+                                                                          indicator);
             operation.setAllowInstallWithoutRestart(true);
 
             return operation.checkMissingDependencies(pluginDescriptor, null) ?
@@ -415,7 +416,7 @@ public final class PluginInstaller {
 
   static void chooseAndInstall(@Nullable Project project,
                                @Nullable JComponent parent,
-                               @NotNull BiConsumer<@NotNull ? super File, @Nullable ? super JComponent> callback) {
+                               @NotNull BiConsumer<? super File, ? super JComponent> callback) {
     FileChooserDescriptor descriptor = new FileChooserDescriptor(false, false, true, true, false, false) {
 
       {
@@ -424,7 +425,11 @@ public final class PluginInstaller {
       }
 
       @Override
-      public boolean isFileSelectable(VirtualFile file) {
+      public boolean isFileSelectable(@Nullable VirtualFile file) {
+        if (file == null) {
+          return false;
+        }
+
         final String extension = file.getExtension();
         return Comparing.strEqual(extension, "jar") || Comparing.strEqual(extension, "zip");
       }

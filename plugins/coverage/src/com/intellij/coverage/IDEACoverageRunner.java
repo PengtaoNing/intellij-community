@@ -9,6 +9,8 @@ import com.intellij.execution.target.java.TargetPaths;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.rt.coverage.data.ClassData;
 import com.intellij.rt.coverage.data.ProjectData;
@@ -100,6 +102,11 @@ public final class IDEACoverageRunner extends JavaCoverageRunner {
       targetParameters.add(request -> {
         return JavaTargetParameter.fixed("-Didea.new.tracing.coverage=true");
       });
+      if (collectLineInfo && !Registry.is("idea.coverage.new.test.tracking.enabled")) {
+        targetParameters.add(request -> {
+          return JavaTargetParameter.fixed("-Didea.new.test.tracking.coverage=false");
+        });
+      }
     }
     if (project != null) {
       final JavaCoverageOptionsProvider optionsProvider = JavaCoverageOptionsProvider.getInstance(project);
@@ -129,12 +136,7 @@ public final class IDEACoverageRunner extends JavaCoverageRunner {
         builder
           .download(sessionDataFilePath,
                          __ -> {
-                           try {
-                             Files.createFile(Paths.get(sessionDataFilePath));
-                           }
-                           catch (IOException e) {
-                             throw new RuntimeException(e);
-                           }
+                           FileUtilRt.createIfNotExists(new File(sessionDataFilePath));
                            return Unit.INSTANCE;
                          },
                          targetSessionDataPath -> {

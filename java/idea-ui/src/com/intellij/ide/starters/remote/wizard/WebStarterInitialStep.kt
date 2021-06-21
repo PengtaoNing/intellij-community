@@ -1,3 +1,4 @@
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.starters.remote.wizard
 
 import com.intellij.ide.starters.JavaStartersBundle
@@ -6,6 +7,7 @@ import com.intellij.ide.starters.shared.*
 import com.intellij.ide.starters.shared.ValidationFunctions.*
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.starters.local.StarterModuleBuilder
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.ide.util.projectWizard.ModuleWizardStep
 import com.intellij.ide.util.projectWizard.WizardContext
@@ -166,7 +168,7 @@ open class WebStarterInitialStep(contextProvider: WebStarterContextProvider) : M
   }
 
   private fun suggestPackageName(): String {
-    return "${groupId.toLowerCase()}.${sanitizePackage(artifactId)}"
+    return StarterModuleBuilder.suggestPackageName(groupId, artifactId)
   }
 
   private fun createComponent(): DialogPanel {
@@ -560,14 +562,6 @@ open class WebStarterInitialStep(contextProvider: WebStarterContextProvider) : M
     }
 
     contentPanel.revalidate()
-  }
-
-  private fun sanitizePackage(input: String): String {
-    val fileName = FileUtil.sanitizeFileName(input, false)
-    return fileName
-      .replace(' ', '-')
-      .replace("-", "")
-      .toLowerCase()
   }
 
   @Suppress("SameParameterValue")

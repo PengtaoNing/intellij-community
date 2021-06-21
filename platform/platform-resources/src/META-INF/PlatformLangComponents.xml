@@ -28,11 +28,6 @@
     <component>
       <implementation-class>com.intellij.workspaceModel.ide.impl.legacyBridge.watcher.VirtualFileUrlWatcher</implementation-class>
     </component>
-    <component>
-      <interface-class>com.intellij.openapi.module.impl.ExternalModuleListStorage</interface-class>
-      <implementation-class>com.intellij.openapi.module.impl.ExternalModuleListStorageImpl</implementation-class>
-      <loadForDefaultProject/>
-    </component>
 
     <component>
       <interface-class>com.intellij.openapi.fileEditor.FileEditorManager</interface-class>
@@ -95,6 +90,15 @@
                     headlessImplementation="com.intellij.openapi.wm.impl.ToolWindowHeadlessManagerImpl" preload="notHeadless"/>
 
     <applicationService serviceImplementation="com.intellij.openapi.keymap.impl.ModifierKeyDoubleClickHandler" preload="await"/>
+
+    <!-- register local sessions and preload per-client services-->
+    <applicationService serviceInterface="com.intellij.openapi.client.ClientSessionsManager"
+                        serviceImplementation="com.intellij.openapi.client.ClientAppSessionsManager"
+                        preload="await"/>
+    <projectService serviceInterface="com.intellij.openapi.client.ClientSessionsManager"
+                    serviceImplementation="com.intellij.openapi.client.ClientProjectSessionsManager"
+                    preload="await"/>
+
     <projectService serviceInterface="com.intellij.openapi.fileEditor.ex.IdeDocumentHistory"
                     serviceImplementation="com.intellij.openapi.fileEditor.impl.IdeDocumentHistoryImpl" preload="await"/>
 

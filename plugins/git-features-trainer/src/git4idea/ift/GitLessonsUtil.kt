@@ -5,6 +5,7 @@ import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.Notification
 import com.intellij.notification.Notifications
 import com.intellij.openapi.ui.popup.Balloon
+import com.intellij.openapi.vcs.VcsBundle
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowId
@@ -13,6 +14,7 @@ import com.intellij.ui.SearchTextField
 import com.intellij.ui.UIBundle
 import com.intellij.util.ui.UIUtil
 import com.intellij.vcs.log.VcsCommitMetadata
+import com.intellij.vcs.log.impl.VcsLogContentUtil
 import com.intellij.vcs.log.impl.VcsProjectLog
 import com.intellij.vcs.log.ui.frame.MainFrame
 import com.intellij.vcs.log.ui.table.VcsLogGraphTable
@@ -27,6 +29,7 @@ import training.dsl.LearningBalloonConfig
 import training.dsl.LessonContext
 import training.dsl.TaskContext
 import training.dsl.subscribeForMessageBus
+import training.learn.LearnBundle
 import training.ui.LearnToolWindow
 import java.awt.Rectangle
 import java.util.concurrent.CompletableFuture
@@ -65,8 +68,10 @@ object GitLessonsUtil {
       val vcsLogUi = VcsProjectLog.getInstance(project).mainLogUi
       // todo: find out how to open branches if it is hidden (git4idea.ui.branch.dashboard.SHOW_GIT_BRANCHES_LOG_PROPERTY is internal and can't be accessed)
       vcsLogUi?.filterUi?.clearFilters()
-
       PropertiesComponent.getInstance(project).setValue("Vcs.Log.Text.Filter.History", null)
+
+      val vcsLogWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.VCS)
+      VcsLogContentUtil.selectMainLog(vcsLogWindow!!.contentManager)
     }
 
     // clear Git tool window to return it to default state (needed in case of restarting the lesson)
@@ -99,7 +104,8 @@ object GitLessonsUtil {
 
     task {
       text(GitLessonsBundle.message("git.balloon.press.to.proceed", strong(UIBundle.message("got.it"))))
-      gotItStep(Balloon.Position.atLeft, 300, GitLessonsBundle.message("git.move.learn.window.balloon.text"))
+      gotItStep(Balloon.Position.atLeft, 300, GitLessonsBundle.message("git.move.learn.window.balloon.text",
+                                                                       strong(LearnBundle.message("toolwindow.stripe.Learn")), strong(VcsBundle.message("commit.dialog.configurable"))))
     }
   }
 
@@ -155,20 +161,23 @@ object GitLessonsUtil {
     }
   }
 
-  private fun TaskContext.gotItStep(position: Balloon.Position, width: Int, @Nls text: String) {
+  fun TaskContext.gotItStep(position: Balloon.Position, width: Int, @Nls text: String) {
     val gotIt = CompletableFuture<Boolean>()
     text(text, LearningBalloonConfig(position, width, false) { gotIt.complete(true) })
     addStep(gotIt)
   }
 
   fun TaskContext.showWarningIfCommitWindowClosed(restoreTaskWhenResolved: Boolean = true) {
-    showWarningIfToolWindowClosed(ToolWindowId.COMMIT, GitLessonsBundle.message("git.window.closed.warning", action("CheckinProject")),
+    showWarningIfToolWindowClosed(ToolWindowId.COMMIT,
+                                  GitLessonsBundle.message("git.window.closed.warning",
+                                                           action("CheckinProject"), strong(VcsBundle.message("commit.dialog.configurable"))),
                                   restoreTaskWhenResolved)
   }
 
   fun TaskContext.showWarningIfGitWindowClosed(restoreTaskWhenResolved: Boolean = true) {
     showWarningIfToolWindowClosed(ToolWindowId.VCS,
-                                  GitLessonsBundle.message("git.commit.window.closed.warning", action("ActivateVersionControlToolWindow")),
+                                  GitLessonsBundle.message("git.window.closed.warning",
+                                                           action("ActivateVersionControlToolWindow"), strong("Git")),
                                   restoreTaskWhenResolved)
   }
 

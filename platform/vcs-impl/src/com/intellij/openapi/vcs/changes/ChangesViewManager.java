@@ -30,6 +30,7 @@ import com.intellij.openapi.util.registry.RegistryValue;
 import com.intellij.openapi.util.registry.RegistryValueListener;
 import com.intellij.openapi.vcs.*;
 import com.intellij.openapi.vcs.changes.actions.ShowDiffPreviewAction;
+import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffFromLocalChangesActionProvider;
 import com.intellij.openapi.vcs.changes.shelf.ShelveChangesManager;
 import com.intellij.openapi.vcs.changes.ui.*;
 import com.intellij.openapi.vcs.impl.LineStatusTrackerSettingListener;
@@ -40,11 +41,11 @@ import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener;
 import com.intellij.problems.ProblemListener;
 import com.intellij.ui.ExpandableItemsHandler;
-import com.intellij.ui.GuiUtils;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.ui.content.Content;
 import com.intellij.util.Alarm;
+import com.intellij.util.ModalityUiUtil;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.MessageBusConnection;
@@ -466,6 +467,11 @@ public class ChangesViewManager implements ChangesViewEx,
     private EditorTabPreview installEditorPreview(@NotNull ChangesViewDiffPreviewProcessor changeProcessor) {
       EditorTabPreview editorPreview = new EditorTabPreview(changeProcessor) {
         @Override
+        public void updateAvailability(@NotNull AnActionEvent e) {
+          ShowDiffFromLocalChangesActionProvider.updateAvailability(e);
+        }
+
+        @Override
         protected String getCurrentName() {
           String changeName = changeProcessor.getCurrentChangeName();
           return changeName != null
@@ -812,7 +818,7 @@ public class ChangesViewManager implements ChangesViewEx,
     }
 
     private void invokeLaterIfNeeded(Runnable runnable) {
-      GuiUtils.invokeLaterIfNeeded(runnable, ModalityState.NON_MODAL, myProject.getDisposed());
+      ModalityUiUtil.invokeLaterIfNeeded(runnable, ModalityState.NON_MODAL, myProject.getDisposed());
     }
 
     private class MyChangeListListener extends ChangeListAdapter {

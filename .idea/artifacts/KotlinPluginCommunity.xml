@@ -31,22 +31,32 @@
           </element>
         </element>
         <element id="archive" name="kotlin-compiler-plugins-allopen.jar">
-          <element id="module-output" name="kotlin.compiler-plugins.allopen" />
+          <element id="module-output" name="kotlin.compiler-plugins.allopen.common" />
+          <element id="module-output" name="kotlin.compiler-plugins.allopen.gradle" />
+          <element id="module-output" name="kotlin.compiler-plugins.allopen.maven" />
         </element>
         <element id="archive" name="kotlin-compiler-plugins-annotation-based-compiler-support.jar">
-          <element id="module-output" name="kotlin.compiler-plugins.annotation-based-compiler-support" />
+          <element id="module-output" name="kotlin.compiler-plugins.annotation-based-compiler-support.common" />
+          <element id="module-output" name="kotlin.compiler-plugins.annotation-based-compiler-support.gradle" />
+          <element id="module-output" name="kotlin.compiler-plugins.annotation-based-compiler-support.maven" />
         </element>
         <element id="archive" name="kotlin-compiler-plugins-kapt.jar">
           <element id="module-output" name="kotlin.compiler-plugins.kapt" />
         </element>
         <element id="archive" name="kotlin-compiler-plugins-kotlinx-serialization.jar">
-          <element id="module-output" name="kotlin.compiler-plugins.kotlinx-serialization" />
+          <element id="module-output" name="kotlin.compiler-plugins.kotlinx-serialization.common" />
+          <element id="module-output" name="kotlin.compiler-plugins.kotlinx-serialization.gradle" />
+          <element id="module-output" name="kotlin.compiler-plugins.kotlinx-serialization.maven" />
         </element>
         <element id="archive" name="kotlin-compiler-plugins-noarg.jar">
-          <element id="module-output" name="kotlin.compiler-plugins.noarg" />
+          <element id="module-output" name="kotlin.compiler-plugins.noarg.common" />
+          <element id="module-output" name="kotlin.compiler-plugins.noarg.gradle" />
+          <element id="module-output" name="kotlin.compiler-plugins.noarg.maven" />
         </element>
         <element id="archive" name="kotlin-compiler-plugins-sam-with-receiver.jar">
-          <element id="module-output" name="kotlin.compiler-plugins.sam-with-receiver" />
+          <element id="module-output" name="kotlin.compiler-plugins.sam-with-receiver.common" />
+          <element id="module-output" name="kotlin.compiler-plugins.sam-with-receiver.gradle" />
+          <element id="module-output" name="kotlin.compiler-plugins.sam-with-receiver.maven" />
         </element>
         <element id="archive" name="kotlin-compiler-plugins-scripting.jar">
           <element id="module-output" name="kotlin.compiler-plugins.scripting" />
@@ -195,10 +205,17 @@
         </element>
         <element id="library" level="project" name="completion-ranking-kotlin" />
         <element id="archive" name="kotlin-parcelize.jar">
-          <element id="module-output" name="kotlin.compiler-plugins.parcelize" />
+          <element id="module-output" name="kotlin.compiler-plugins.parcelize.common" />
+          <element id="module-output" name="kotlin.compiler-plugins.parcelize.gradle" />
         </element>
         <element id="archive" name="parcelize-compiler-plugin-for-ide.jar">
           <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/jetbrains/kotlin/parcelize-compiler-plugin-for-ide/1.4.32-release-380/parcelize-compiler-plugin-for-ide-1.4.32-release-380.jar" path-in-jar="/" />
+        </element>
+        <element id="archive" name="kotlin-i18n.jar">
+          <element id="module-output" name="kotlin.i18n" />
+        </element>
+        <element id="archive" name="kotlin-injection.jar">
+          <element id="module-output" name="kotlin.injection" />
         </element>
       </element>
       <element id="directory" name="kotlinc">

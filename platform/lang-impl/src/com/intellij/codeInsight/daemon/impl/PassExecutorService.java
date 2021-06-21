@@ -16,7 +16,6 @@ import com.intellij.openapi.application.impl.ApplicationImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.EditorActivityManager;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
@@ -36,6 +35,7 @@ import com.intellij.util.Functions;
 import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
+import com.intellij.util.ui.UIUtil;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.jetbrains.annotations.NonNls;
@@ -239,9 +239,9 @@ final class PassExecutorService implements Disposable {
                                                                      ((TextEditor)it).getEditor().getContentComponent().isFocusOwner());
     if (focusedEditor != null) return focusedEditor;
 
-    final VirtualFile file = FileDocumentManager.getInstance().getFile(document);
+    VirtualFile file = FileDocumentManager.getInstance().getFile(document);
     if (file != null) {
-      final FileEditor selected = myFileEditorManager.getSelectedEditor(file);
+      FileEditor selected = myFileEditorManager.getSelectedEditor(file);
       if (selected != null && fileEditors.contains(selected)) {
         return selected;
       }
@@ -310,7 +310,7 @@ final class PassExecutorService implements Disposable {
                                                     @NotNull List<ScheduledPass> dependentPasses,
                                                     @NotNull DaemonProgressIndicator updateProgress,
                                                     @NotNull AtomicInteger myThreadsToStartCountdown,
-                                                    final int predecessorId,
+                                                    int predecessorId,
                                                     @NotNull Int2ObjectMap<ScheduledPass> thisEditorId2ScheduledPass,
                                                     @NotNull Int2ObjectMap<TextEditorHighlightingPass> thisEditorId2Pass) {
     ScheduledPass predecessor = thisEditorId2ScheduledPass.get(predecessorId);
@@ -449,10 +449,10 @@ final class PassExecutorService implements Disposable {
     }
   }
 
-  private void applyInformationToEditorsLater(@NotNull final FileEditor fileEditor,
-                                              @NotNull final HighlightingPass pass,
-                                              @NotNull final DaemonProgressIndicator updateProgress,
-                                              @NotNull final AtomicInteger threadsToStartCountdown,
+  private void applyInformationToEditorsLater(@NotNull FileEditor fileEditor,
+                                              @NotNull HighlightingPass pass,
+                                              @NotNull DaemonProgressIndicator updateProgress,
+                                              @NotNull AtomicInteger threadsToStartCountdown,
                                               @NotNull Runnable callbackOnApplied) {
     ApplicationManager.getApplication().invokeLater(() -> {
       if (isDisposed() || !fileEditor.isValid()) {
@@ -463,8 +463,7 @@ final class PassExecutorService implements Disposable {
         return;
       }
       try {
-        if (fileEditor instanceof TextEditor && EditorActivityManager.getInstance().isVisible(((TextEditor)fileEditor).getEditor())
-          || fileEditor.getComponent().isDisplayable()) {
+        if (UIUtil.isShowing(fileEditor.getComponent())) {
           pass.applyInformationToEditor();
           repaintErrorStripeAndIcon(fileEditor);
           if (pass instanceof TextEditorHighlightingPass) {

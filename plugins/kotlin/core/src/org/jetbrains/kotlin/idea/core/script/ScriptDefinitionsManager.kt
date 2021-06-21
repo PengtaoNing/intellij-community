@@ -31,7 +31,7 @@ import org.jetbrains.kotlin.idea.caches.project.getScriptRelatedModuleInfo
 import org.jetbrains.kotlin.idea.core.KotlinPluginDisposable
 import org.jetbrains.kotlin.idea.core.script.configuration.CompositeScriptConfigurationManager
 import org.jetbrains.kotlin.idea.core.script.settings.KotlinScriptingSettings
-import org.jetbrains.kotlin.idea.core.util.withCheckCanceledLock
+import org.jetbrains.kotlin.idea.core.util.CheckCanceledLock
 import org.jetbrains.kotlin.idea.core.util.writeWithCheckCanceled
 import org.jetbrains.kotlin.idea.util.application.getServiceSafe
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
@@ -60,7 +60,7 @@ import kotlin.script.experimental.jvm.util.ClasspathExtractionException
 import kotlin.script.experimental.jvm.util.scriptCompilationClasspathFromContextOrStdlib
 import kotlin.script.templates.standard.ScriptTemplateWithArgs
 
-class LoadScriptDefinitionsStartupActivity : StartupActivity {
+class LoadScriptDefinitionsStartupActivity : StartupActivity.Background {
     override fun runActivity(project: Project) {
         if (isUnitTestMode()) {
             // In tests definitions are loaded synchronously because they are needed to analyze script
@@ -84,7 +84,7 @@ class ScriptDefinitionsManager(private val project: Project) : LazyScriptDefinit
 
     private val failedContributorsHashes = HashSet<Int>()
 
-    private val scriptDefinitionsCacheLock = ReentrantLock()
+    private val scriptDefinitionsCacheLock = CheckCanceledLock()
     private val scriptDefinitionsCache = SLRUMap<String, ScriptDefinition>(10, 10)
 
     // cache service as it's getter is on the hot path
@@ -101,7 +101,7 @@ class ScriptDefinitionsManager(private val project: Project) : LazyScriptDefinit
 
         if (!isReady()) return null
 
-        scriptDefinitionsCacheLock.withCheckCanceledLock { scriptDefinitionsCache.get(locationId) }?.let { cached -> return cached }
+        scriptDefinitionsCacheLock.withLock { scriptDefinitionsCache.get(locationId) }?.let { cached -> return cached }
 
         val definition =
             if (isScratchFile(script)) {
@@ -111,7 +111,7 @@ class ScriptDefinitionsManager(private val project: Project) : LazyScriptDefinit
                 super.findDefinition(script) ?: return null
             }
 
-        scriptDefinitionsCacheLock.withCheckCanceledLock {
+        scriptDefinitionsCacheLock.withLock {
             scriptDefinitionsCache.put(locationId, definition)
         }
 
@@ -229,7 +229,7 @@ class ScriptDefinitionsManager(private val project: Project) : LazyScriptDefinit
 
     override fun getDefaultDefinition(): ScriptDefinition {
         val standardScriptDefinitionContributor = ScriptDefinitionContributor.find<StandardScriptDefinitionContributor>(project)
-            ?: error("StandardScriptDefinitionContributor should be registered is plugin.xml")
+            ?: error("StandardScriptDefinitionContributor should be registered in plugin.xml")
         return ScriptDefinition.FromLegacy(getScriptingHostConfiguration(), standardScriptDefinitionContributor.getDefinitions().last())
     }
 
@@ -239,12 +239,17 @@ class ScriptDefinitionsManager(private val project: Project) : LazyScriptDefinit
 
         val fileTypeManager = FileTypeManager.getInstance()
 
-        val newExtensions = getKnownFilenameExtensions().filter {
-            fileTypeManager.getFileTypeByExtension(it) != KotlinFileType.INSTANCE
+        val newExtensions = getKnownFilenameExtensions().toSet().filter {
+            val fileTypeByExtension = fileTypeManager.getFileTypeByFileName("xxx.$it")
+            val notKnown = fileTypeByExtension != KotlinFileType.INSTANCE
+            if (notKnown) {
+                scriptingWarnLog("extension $it file type [${fileTypeByExtension.name}] is not registered as ${KotlinFileType.INSTANCE.name}")
+            }
+            notKnown
         }.toSet()
 
         clearCache()
-        scriptDefinitionsCacheLock.withCheckCanceledLock { scriptDefinitionsCache.clear() }
+        scriptDefinitionsCacheLock.withLock { scriptDefinitionsCache.clear() }
 
         return UpdateDefinitionsResult(project, newExtensions)
     }
@@ -252,6 +257,7 @@ class ScriptDefinitionsManager(private val project: Project) : LazyScriptDefinit
     private data class UpdateDefinitionsResult(val project: Project, val newExtensions: Set<String>) {
         fun apply() {
             if (newExtensions.isNotEmpty()) {
+                scriptingWarnLog("extensions ${newExtensions} is about to be registered as ${KotlinFileType.INSTANCE.name}")
                 // Register new file extensions
                 ApplicationManager.getApplication().invokeLater {
                     val fileTypeManager = FileTypeManager.getInstance()

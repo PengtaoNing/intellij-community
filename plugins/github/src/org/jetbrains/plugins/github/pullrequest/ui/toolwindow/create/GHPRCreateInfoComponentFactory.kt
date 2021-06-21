@@ -3,17 +3,13 @@ package org.jetbrains.plugins.github.pullrequest.ui.toolwindow.create
 
 import com.intellij.CommonBundle
 import com.intellij.collaboration.async.CompletableFutureUtil.successOnEdt
-import com.intellij.dvcs.DvcsUtil
-import com.intellij.dvcs.push.PushSpec
-import com.intellij.dvcs.ui.DvcsBundle
+import com.intellij.collaboration.ui.ListenableProgressIndicator
+import com.intellij.collaboration.ui.SingleValueModel
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.application.invokeAndWaitIfNeeded
-import com.intellij.openapi.progress.*
-import com.intellij.openapi.progress.util.AbstractProgressIndicatorExBase
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.util.ProgressWrapper
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.ui.messages.MessagesService
 import com.intellij.openapi.util.NlsActions
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.IdeBorderFactory
@@ -25,20 +21,15 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.ui.scale.JBUIScale
-import com.intellij.util.EventDispatcher
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import git4idea.GitLocalBranch
 import git4idea.GitRemoteBranch
-import git4idea.GitStandardRemoteBranch
-import git4idea.GitVcs
-import git4idea.push.GitPushOperation
-import git4idea.push.GitPushSource
-import git4idea.push.GitPushSupport
-import git4idea.push.GitPushTarget
-import git4idea.repo.GitRemote
-import git4idea.repo.GitRepository
-import git4idea.validators.GitRefNameValidator
+import git4idea.GitPushUtil
+import git4idea.GitPushUtil.findOrPushRemoteBranch
+import git4idea.GitPushUtil.findPushTarget
+import git4idea.ui.branch.MergeDirectionComponentFactory
+import git4idea.ui.branch.MergeDirectionModel
 import net.miginfocom.layout.CC
 import net.miginfocom.layout.LC
 import net.miginfocom.swing.MigLayout
@@ -50,15 +41,16 @@ import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.config.GithubPullRequestsProjectUISettings
 import org.jetbrains.plugins.github.pullrequest.data.GHPRDataContext
 import org.jetbrains.plugins.github.pullrequest.data.GHPRIdentifier
-import org.jetbrains.plugins.github.pullrequest.ui.*
+import org.jetbrains.plugins.github.pullrequest.ui.GHCompletableFutureLoadingModel
+import org.jetbrains.plugins.github.pullrequest.ui.GHIOExecutorLoadingModel
+import org.jetbrains.plugins.github.pullrequest.ui.GHLoadingModel
+import org.jetbrains.plugins.github.pullrequest.ui.GHSimpleLoadingModel
 import org.jetbrains.plugins.github.pullrequest.ui.details.GHPRMetadataPanelFactory
 import org.jetbrains.plugins.github.pullrequest.ui.toolwindow.GHPRToolWindowTabComponentController
 import org.jetbrains.plugins.github.ui.util.DisableableDocument
 import org.jetbrains.plugins.github.ui.util.GHUIUtil
-import org.jetbrains.plugins.github.ui.util.SingleValueModel
 import org.jetbrains.plugins.github.util.CollectionDelta
-import org.jetbrains.plugins.github.util.GHProjectRepositoriesManager
-import org.jetbrains.plugins.github.util.GithubGitHelper
+import org.jetbrains.plugins.github.util.GHGitRepositoryMapping
 import java.awt.Component
 import java.awt.Container
 import java.awt.event.ActionEvent
@@ -68,11 +60,10 @@ import javax.swing.text.Document
 
 internal class GHPRCreateInfoComponentFactory(private val project: Project,
                                               private val settings: GithubPullRequestsProjectUISettings,
-                                              private val repositoriesManager: GHProjectRepositoriesManager,
                                               private val dataContext: GHPRDataContext,
                                               private val viewController: GHPRToolWindowTabComponentController) {
 
-  fun create(directionModel: GHPRCreateDirectionModel,
+  fun create(directionModel: MergeDirectionModel<GHGitRepositoryMapping>,
              titleDocument: Document,
              descriptionDocument: DisableableDocument,
              metadataModel: GHPRCreateMetadataModel,
@@ -104,7 +95,29 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
     }
     InfoController(directionModel, existenceCheckLoadingModel, existenceCheckProgressIndicator, createAction, createDraftAction)
 
-    val directionSelector = GHPRCreateDirectionComponentFactory(repositoriesManager, directionModel).create().apply {
+    val directionSelector = MergeDirectionComponentFactory(
+      directionModel,
+      { model ->
+        with(model) {
+          val branch = baseBranch ?: return@with null
+          val headRepoPath = headRepo?.ghRepositoryCoordinates?.repositoryPath
+          val baseRepoPath = baseRepo.ghRepositoryCoordinates.repositoryPath
+          val showOwner = headRepoPath != null && baseRepoPath != headRepoPath
+          baseRepo.ghRepositoryCoordinates.repositoryPath.toString(showOwner) + ":" + branch.name
+        }
+      },
+
+      { model ->
+        with(model) {
+          val branch = headBranch ?: return@with null
+          val headRepoPath = headRepo?.ghRepositoryCoordinates?.repositoryPath ?: return@with null
+          val baseRepoPath = baseRepo.ghRepositoryCoordinates.repositoryPath
+          val showOwner = baseRepoPath != headRepoPath
+          headRepoPath.toString(showOwner) + ":" + branch.name
+        }
+      }
+
+    ).create().apply {
       border = BorderFactory.createCompoundBorder(IdeBorderFactory.createBorder(SideBorder.BOTTOM),
                                                   JBUI.Borders.empty(7, 8, 8, 8))
     }
@@ -185,7 +198,7 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
     }
   }
 
-  private inner class InfoController(private val directionModel: GHPRCreateDirectionModel,
+  private inner class InfoController(private val directionModel: MergeDirectionModel<GHGitRepositoryMapping>,
                                      private val existenceCheckLoadingModel: GHIOExecutorLoadingModel<GHPRIdentifier?>,
                                      private val existenceCheckProgressIndicator: ListenableProgressIndicator,
                                      private val createAction: AbstractAction,
@@ -219,17 +232,17 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
       createDraftAction.isEnabled = enabled
     }
 
-    private fun findCurrentRemoteHead(directionModel: GHPRCreateDirectionModel): GitRemoteBranch? {
+    private fun findCurrentRemoteHead(directionModel: MergeDirectionModel<GHGitRepositoryMapping>): GitRemoteBranch? {
       val headRepo = directionModel.headRepo ?: return null
       val headBranch = directionModel.headBranch ?: return null
       if (headBranch is GitRemoteBranch) return headBranch
       else headBranch as GitLocalBranch
-      val gitRemote = headRepo.gitRemote
-      return GithubGitHelper.findPushTarget(gitRemote.repository, gitRemote.remote, headBranch)?.branch
+      val gitRemote = headRepo.gitRemoteUrlCoordinates
+      return findPushTarget(gitRemote.repository, gitRemote.remote, headBranch)?.branch
     }
   }
 
-  private inner class CreateAction(private val directionModel: GHPRCreateDirectionModel,
+  private inner class CreateAction(private val directionModel: MergeDirectionModel<GHGitRepositoryMapping>,
                                    private val titleDocument: Document, private val descriptionDocument: DisableableDocument,
                                    private val metadataModel: GHPRCreateMetadataModel,
                                    private val draft: Boolean,
@@ -250,10 +263,17 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
         CompletableFuture.completedFuture(headBranch)
       }
       else {
-        findOrPushRemoteBranch(progressIndicator,
-                               headRepo.gitRemote.repository,
-                               headRepo.gitRemote.remote,
-                               headBranch as GitLocalBranch)
+        val dialogMessages = GitPushUtil.BranchNameInputDialogMessages(
+          GithubBundle.message("pull.request.create.input.remote.branch.title"),
+          GithubBundle.message("pull.request.create.input.remote.branch.name"),
+          GithubBundle.message("pull.request.create.input.remote.branch.comment", (headBranch as GitLocalBranch).name,
+                               headRepo.gitRemoteUrlCoordinates.remote.name))
+        findOrPushRemoteBranch(project,
+                               progressIndicator,
+                               headRepo.gitRemoteUrlCoordinates.repository,
+                               headRepo.gitRemoteUrlCoordinates.remote,
+                               headBranch,
+                               dialogMessages)
       }.thenCompose { remoteHeadBranch ->
         dataContext.creationService
           .createPullRequest(progressIndicator, baseBranch, headRepo, remoteHeadBranch,
@@ -264,7 +284,7 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
           .successOnEdt {
             if (!progressIndicator.isCanceled) {
               viewController.viewPullRequest(it)
-              settings.recentNewPullRequestHead = headRepo.repository
+              settings.recentNewPullRequestHead = headRepo.ghRepositoryCoordinates
               viewController.resetNewPullRequestView()
             }
             it
@@ -272,65 +292,6 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
       }
     }
 
-    private fun findOrPushRemoteBranch(progressIndicator: ProgressIndicator,
-                                       repository: GitRepository,
-                                       remote: GitRemote,
-                                       localBranch: GitLocalBranch): CompletableFuture<GitRemoteBranch> {
-
-      val gitPushSupport = DvcsUtil.getPushSupport(GitVcs.getInstance(project)) as? GitPushSupport
-                           ?: return CompletableFuture.failedFuture(ProcessCanceledException())
-
-      val existingPushTarget = GithubGitHelper.findPushTarget(repository, remote, localBranch)
-      if (existingPushTarget != null) {
-        val localHash = repository.branches.getHash(localBranch)
-        val remoteHash = repository.branches.getHash(existingPushTarget.branch)
-        if (localHash == remoteHash) return CompletableFuture.completedFuture(existingPushTarget.branch)
-      }
-
-      val pushTarget = existingPushTarget
-                       ?: inputPushTarget(repository, remote, localBranch)
-                       ?: return CompletableFuture.failedFuture(ProcessCanceledException())
-
-      val future = CompletableFuture<GitRemoteBranch>()
-      ProgressManager.getInstance().runProcessWithProgressAsynchronously(
-        object : Task.Backgroundable(repository.project, DvcsBundle.message("push.process.pushing"), true) {
-
-          override fun run(indicator: ProgressIndicator) {
-            indicator.text = DvcsBundle.message("push.process.pushing")
-            val pushSpec = PushSpec(GitPushSource.create(localBranch), pushTarget)
-            val pushResult = GitPushOperation(repository.project, gitPushSupport, mapOf(repository to pushSpec), null, false, false)
-                               .execute().results[repository] ?: error("Missing push result")
-            check(pushResult.error == null) {
-              GithubBundle.message("pull.request.create.push.failed", pushResult.error.orEmpty())
-            }
-          }
-
-          override fun onSuccess() {
-            future.complete(pushTarget.branch)
-          }
-
-          override fun onThrowable(error: Throwable) {
-            future.completeExceptionally(error)
-          }
-
-          override fun onCancel() {
-            future.completeExceptionally(ProcessCanceledException())
-          }
-        }, progressIndicator)
-      return future
-    }
-
-    private fun inputPushTarget(repository: GitRepository, remote: GitRemote, localBranch: GitLocalBranch): GitPushTarget? {
-      val branchName = MessagesService.getInstance().showInputDialog(repository.project, null,
-                                                                     GithubBundle.message("pull.request.create.input.remote.branch.name"),
-                                                                     GithubBundle.message("pull.request.create.input.remote.branch.title"),
-                                                                     null, localBranch.name, null, null,
-                                                                     GithubBundle.message("pull.request.create.input.remote.branch.comment",
-                                                                                          localBranch.name, remote.name))
-                       ?: return null
-      //always set tracking
-      return GitPushTarget(GitStandardRemoteBranch(remote, GitRefNameValidator.getInstance().cleanUpBranchName(branchName)), true)
-    }
 
     private fun adjustReviewers(pullRequest: GHPullRequestShort, reviewers: List<GHPullRequestRequestedReviewer>)
       : CompletableFuture<GHPullRequestShort> {
@@ -390,7 +351,7 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
   companion object {
     private val Document.text: String get() = getText(0, length)
 
-    private fun createNoChangesWarningLabel(directionModel: GHPRCreateDirectionModel,
+    private fun createNoChangesWarningLabel(directionModel: MergeDirectionModel<GHGitRepositoryMapping>,
                                             commitsCountModel: SingleValueModel<Int?>): JComponent {
       val label = JLabel(AllIcons.General.Warning)
       fun update() {
@@ -401,8 +362,8 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
         label.text = GithubBundle.message("pull.request.create.no.changes", base, head)
       }
 
-      commitsCountModel.addValueChangedListener(::update)
-      commitsCountModel.addAndInvokeValueChangedListener(::update)
+      commitsCountModel.addListener { update() }
+      commitsCountModel.addAndInvokeListener { update() }
       return label
     }
 
@@ -437,16 +398,6 @@ internal class GHPRCreateInfoComponentFactory(private val project: Project,
         label.text = progressIndicator.text
       }
       return label
-    }
-
-    private class ListenableProgressIndicator : AbstractProgressIndicatorExBase(), StandardProgressIndicator {
-      private val eventDispatcher = EventDispatcher.create(SimpleEventListener::class.java)
-
-      override fun isReuseable() = true
-      override fun onProgressChange() = invokeAndWaitIfNeeded { eventDispatcher.multicaster.eventOccurred() }
-      fun addAndInvokeListener(listener: () -> Unit) = SimpleEventListener.addAndInvokeListener(eventDispatcher, listener)
-      override fun cancel() = super.cancel()
-      override fun isCanceled() = super.isCanceled()
     }
   }
 }

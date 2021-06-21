@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.codeHighlighting.Pass;
@@ -906,9 +906,14 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   @Override
   public void visitLiteralExpression(PsiLiteralExpression expression) {
     super.visitLiteralExpression(expression);
-    if (myHolder.hasErrorResults()) return;
 
-    myHolder.add(HighlightUtil.checkLiteralExpressionParsingError(expression, myLanguageLevel,myFile));
+    if (!myHolder.hasErrorResults() && expression.textMatches(PsiKeyword.NULL) && expression.getParent() instanceof PsiCaseLabelElementList) {
+      myHolder.add(checkFeature(expression, HighlightingFeature.PATTERNS_IN_SWITCH));
+    }
+
+    if (!myHolder.hasErrorResults()) {
+      myHolder.add(HighlightUtil.checkLiteralExpressionParsingError(expression, myLanguageLevel,myFile));
+    }
 
     if (myRefCountHolder != null && !myHolder.hasErrorResults()) {
       registerReferencesFromInjectedFragments(expression);
@@ -1998,6 +2003,32 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     super.visitProvidesStatement(statement);
     if (myLanguageLevel.isAtLeast(LanguageLevel.JDK_1_9)) {
       if (!myHolder.hasErrorResults()) myHolder.addAll(ModuleHighlightUtil.checkServiceImplementations(statement, myFile));
+    }
+  }
+
+  @Override
+  public void visitDefaultCaseLabelElement(PsiDefaultCaseLabelElement element) {
+    super.visitDefaultCaseLabelElement(element);
+    myHolder.add(checkFeature(element, HighlightingFeature.PATTERNS_IN_SWITCH));
+  }
+
+  @Override
+  public void visitParenthesizedPattern(PsiParenthesizedPattern pattern) {
+    super.visitParenthesizedPattern(pattern);
+    myHolder.add(checkFeature(pattern, HighlightingFeature.GUARDED_AND_PARENTHESIZED_PATTERNS));
+  }
+
+  @Override
+  public void visitGuardedPattern(PsiGuardedPattern pattern) {
+    super.visitGuardedPattern(pattern);
+    myHolder.add(checkFeature(pattern, HighlightingFeature.GUARDED_AND_PARENTHESIZED_PATTERNS));
+  }
+
+  @Override
+  public void visitTypeTestPattern(PsiTypeTestPattern pattern) {
+    super.visitTypeTestPattern(pattern);
+    if (pattern.getParent() instanceof PsiCaseLabelElementList) {
+      myHolder.add(checkFeature(pattern, HighlightingFeature.PATTERNS_IN_SWITCH));
     }
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.reference;
 
@@ -290,8 +290,9 @@ public class RefJavaUtilImpl extends RefJavaUtil {
                          for (UTypeReferenceExpression type : uClass.getUastSuperTypes()) {
                            type.accept(this);
                          }
-                         RefClassImpl refClass = (RefClassImpl)refFrom.getRefManager().getReference(uClass.getSourcePsi());
-                         refFrom.addReference(refClass, uClass.getSourcePsi(), decl, false, true, null);
+                         PsiElement sourcePsi = uClass.getSourcePsi();
+                         RefElement refWhat = refFrom.getRefManager().getReference(sourcePsi);
+                         refFrom.addReference(refWhat, sourcePsi, decl, false, true, null);
                          return true;
                        }
 
@@ -552,7 +553,12 @@ public class RefJavaUtilImpl extends RefJavaUtil {
       uElement = uElement.getUastParent();
     }
 
-    return uElement != null ? (RefClass)refManager.getReference(uElement.getSourcePsi()) : null;
+    if (uElement != null) {
+      RefElement reference = refManager.getReference(uElement.getSourcePsi());
+      return reference instanceof RefClass ? (RefClass)reference : null;
+    }
+
+    return null;
   }
 
   @Override

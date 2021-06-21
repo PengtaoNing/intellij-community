@@ -181,6 +181,9 @@
 
     <applicationService serviceInterface="com.intellij.openapi.ide.CopyPasteManager"
                         serviceImplementation="com.intellij.ide.CopyPasteManagerEx"/>
+    <applicationService serviceInterface="com.intellij.ide.ClientCopyPasteManager"
+                        serviceImplementation="com.intellij.ide.LocalCopyPasteManager"
+                        client="local"/>
     <applicationService serviceInterface="com.intellij.openapi.ui.popup.JBPopupFactory"
                         serviceImplementation="com.intellij.ui.popup.PopupFactoryImpl"/>
     <applicationService serviceInterface="com.intellij.openapi.fileEditor.ex.FileEditorProviderManager"
@@ -237,6 +240,7 @@
     <applicationService serviceImplementation="com.intellij.diff.tools.external.ExternalDiffSettings"/>
     <applicationService serviceImplementation="com.intellij.diff.vcs.DiffVcsFacade"/>
     <applicationService serviceImplementation="com.intellij.diff.DiffApplicationSettings"/>
+    <applicationService serviceImplementation="com.intellij.ide.util.TipsUsageManager" preload="true"/>
     <applicationConfigurable groupId="tools" id="diff.base"
                              bundle="messages.DiffBundle"
                              key="configurable.DiffSettingsConfigurable.display.name"
@@ -268,6 +272,8 @@
                     serviceImplementation="com.intellij.openapi.diff.impl.dir.DirDiffManagerImpl"/>
     <diff.DiffExtension implementation="com.intellij.diff.actions.ShowBlankDiffWindowDiffExtension"/>
 
+    <projectService serviceInterface="com.intellij.diff.editor.DiffEditorTabFilesManager"
+                    serviceImplementation="com.intellij.diff.editor.DefaultDiffTabFilesManager"/>
 
     <daemon.highlightInfoFilter implementation="com.intellij.codeInsight.daemon.OutsidersPsiFileSupport$HighlightFilter"/>
     <daemon.intentionActionFilter implementation="com.intellij.codeInsight.daemon.OutsidersPsiFileSupport$IntentionFilter"/>
@@ -282,6 +288,8 @@
     <editorTabColorProvider implementation="com.intellij.diff.editor.VcsEditorTabColorProvider" order="first"/>
 
     <fileIconProvider implementation="com.intellij.diff.editor.DiffFileIconProvider"/>
+
+    <editorTabTitleProvider implementation="com.intellij.diff.editor.DiffEditorTabTitleProvider"/>
 
     <applicationService serviceInterface="com.intellij.ui.SystemNotifications"
                         serviceImplementation="com.intellij.ui.SystemNotificationsImpl"/>
@@ -348,8 +356,6 @@
                         serviceImplementation="com.intellij.configurationStore.schemeManager.SchemeManagerFactoryBase$ApplicationSchemeManagerFactory"/>
     <projectService serviceInterface="com.intellij.openapi.options.SchemeManagerFactory"
                     serviceImplementation="com.intellij.configurationStore.schemeManager.SchemeManagerFactoryBase$ProjectSchemeManagerFactory"/>
-
-    <applicationService serviceImplementation="com.intellij.openapi.editor.EditorActivityManager"/>
 
     <applicationService serviceInterface="com.intellij.openapi.editor.colors.TextAttributesKey$TextAttributeKeyDefaultsProvider"
                         serviceImplementation="com.intellij.openapi.editor.colors.impl.TextAttributeKeyDefaultsProviderImpl"/>
@@ -538,11 +544,11 @@
                              id="http.certificates" instance="com.intellij.util.net.ssl.CertificateConfigurable"/>
 
     <fileType name="ARCHIVE" implementationClass="com.intellij.ide.highlighter.ArchiveFileType" fieldName="INSTANCE"
-              extensions="zip;jar;war;ear;swc;ane;egg;apk"/>
+              extensions="ane;apk;ear;egg;jar;swc;war;zip"/>
     <fileType name="PLAIN_TEXT" implementationClass="com.intellij.openapi.fileTypes.PlainTextFileType" fieldName="INSTANCE" language="TEXT"
               extensions="txt"/>
     <fileType name="Native" implementationClass="com.intellij.openapi.fileTypes.NativeFileType" fieldName="INSTANCE"
-              extensions="doc;docx;xls;xlsx;ppt;pptx;mdb;vsd;pdf;hlp;chm;odt"/>
+              extensions="chm;doc;docx;hlp;mdb;odt;pdf;ppt;pptx;vsd;xls;xlsx"/>
     <fileType name="UNKNOWN" implementationClass="com.intellij.openapi.fileTypes.UnknownFileType" fieldName="INSTANCE"/>
     <fileType name="AUTO_DETECTED" implementationClass="com.intellij.openapi.fileTypes.ex.DetectedByContentFileType" fieldName="INSTANCE"/>
 
@@ -600,6 +606,8 @@
 
     <applicationService serviceInterface="com.intellij.openapi.editor.EditorFactory"
                         serviceImplementation="com.intellij.openapi.editor.impl.EditorFactoryImpl"/>
+    <applicationService serviceImplementation="com.intellij.openapi.editor.ClientEditorManager"
+                        client="all"/>
 
     <applicationService serviceInterface="com.intellij.notification.NotificationsManager"
                         serviceImplementation="com.intellij.notification.impl.NotificationsManagerImpl"/>
@@ -683,6 +691,7 @@
     <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.os.SystemRuntimeCollector"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.ui.UiInfoUsageCollector"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.UpdateManagerUsagesCollector"/>
+    <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.settings.ProxyTypeCollector"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.diff.statistics.DiffUsagesCollector"/>
     <applicationInitializedListener implementation="com.intellij.openapi.application.ImportOldConfigsUsagesCollector$Trigger"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.RegistryApplicationUsagesCollector"/>
@@ -698,7 +707,7 @@
     <statistics.counterUsagesCollector implementationClass="com.intellij.accessibility.AccessibilityUsageTrackerCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.ide.actions.searcheverywhere.SearchEverywhereFiltersStatisticsCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollector"/>
-    <statistics.counterUsagesCollector groupId="live.templates" version="46"/>
+    <statistics.counterUsagesCollector implementationClass="com.intellij.codeInsight.template.impl.LiveTemplateRunLogger"/>
     <statistics.counterUsagesCollector groupId="vcs.diff.trigger" version="2"/>
     <statistics.counterUsagesCollector groupId="vcs.back.forward.trigger" version="1"/>
     <statistics.counterUsagesCollector groupId="ide.self.update" version="2"/>
@@ -748,8 +757,6 @@
     <statistics.applicationUsagesCollector implementation="com.intellij.featureStatistics.fusCollectors.EAPUsageCollector"/>
     <postStartupActivity implementation="com.intellij.featureStatistics.ProductivityFeaturesRegistryImpl$EventLogSubscribeActivity"/>
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.fus.FeatureUsageEventLoggerProvider"/>
-    <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.fus.SearchEverywhereEventLoggerProvider" order="first"/>
-    <applicationService serviceImplementation="com.intellij.internal.statistic.eventLog.fus.SearchEverywhereSessionService"/>
     <statistic.eventLog.fusStateEventTracker implementation="com.intellij.featureStatistics.fusCollectors.SystemStateMonitor"/>
     <statistic.eventLog.fusStateEventTracker implementation="com.intellij.configurationStore.statistic.eventLog.FeatureUsageSettingsEventScheduler"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.featureStatistics.fusCollectors.WSLInstallationsCollector"/>
@@ -945,14 +952,13 @@
                         serviceImplementation="com.intellij.ide.browsers.impl.WebBrowserServiceImpl"/>
 
     <!-- Actions on Save -->
-    <!--
     <projectConfigurable groupId="tools"
                          groupWeight="170"
-                         instance="com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable"
+                         provider="com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable$ActionsOnSaveConfigurableProvider"
                          id="actions.on.save"
                          bundle="messages.IdeBundle"
-                         key="actions.on.save.page.title"/>
-    -->
+                         key="actions.on.save.page.title"
+                         nonDefaultProject="true"/>
 
     <!--troubleshooting-->
     <generalTroubleInfoCollector implementation="com.intellij.ide.troubleshooting.AboutTroubleInfoCollector"/>
@@ -1193,12 +1199,11 @@
     <registryKey key="html.editor.timeout" defaultValue="15000" description="HTML editor content loading timeout, ms"/>
     <iw.actionProvider implementation="com.intellij.codeInsight.actions.ReaderModeActionProvider"/>
     <gotoActionAliasMatcher implementation="com.intellij.ide.util.gotoByName.LocalizedActionAliasMatcher" />
+    <gotoActionAliasMatcher implementation="com.intellij.ide.util.gotoByName.DefaultBundleActionAliasMatcher" />
 
     <applicationService serviceImplementation="com.intellij.ide.ui.IconDbMaintainer" preload="notHeadless"/>
 
     <backgroundPostStartupActivity implementation="com.intellij.accessibility.AccessibilityUsageTrackerCollector$CollectStatisticsTask"/>
-    <registryKey key="statistics.mlse.report.percentage" defaultValue="100"
-                 description="Percent of data reported by machine learning for search everywhere logger. 0 to disable"/>
 
     <editorFactoryListener implementation="com.intellij.codeInsight.editorActions.ReaderModeEditorFactoryListener"/>
     <readerModeMatcher implementation="com.intellij.diff.actions.DiffReaderModeMatcher"/>
@@ -1225,6 +1230,8 @@
 
     <advancedSetting id="ide.show.fileType.icon.in.titleBar" default="false" groupKey="group.advanced.settings.ui"/>
     <advancedSetting id="ide.max.recent.projects" default="50" groupKey="group.advanced.settings.ide"/>
+    <advancedSetting id="ide.max.recent.files" default="50" groupKey="group.advanced.settings.ide" service="com.intellij.ide.ui.UISettings" property="recentFilesLimit"/>
+    <advancedSetting id="ide.max.recent.locations" default="25" groupKey="group.advanced.settings.ide" service="com.intellij.ide.ui.UISettings" property="recentLocationsLimit"/>
     <advancedSetting id="temporary.configurations.limit" default="5" groupKey="group.advanced.settings.ide"/>
     <advancedSetting id="edit.source.on.enter.key.request.focus.in.editor" default="true" groupKey="group.advanced.settings.project.view"/>
     <advancedSetting id="ide.tree.collapse.recursively" default="true" groupKey="group.advanced.settings.project.view"/>
@@ -1236,13 +1243,18 @@
     <advancedSetting id="editor.tab.painting" enumClass="com.intellij.openapi.editor.impl.TabCharacterPaintMode" default="HORIZONTAL_LINE" groupKey="group.advanced.settings.editor"/>
     <advancedSetting id="editor.distraction.free.margin" default="-1" groupKey="group.advanced.settings.editor"/>
     <advancedSetting id="editor.soft.wrap.force.limit" default="100000" groupKey="group.advanced.settings.editor"/>
+    <advancedSetting id="editor.open.inactive.splitter" default="true" groupKey="group.advanced.settings.editor.tabs"/>
+    <advancedSetting id="editor.reuse.not.modified.tabs" default="false" groupKey="group.advanced.settings.editor.tabs" service="com.intellij.ide.ui.UISettings" property="reuseNotModifiedTabs"/>
+    <advancedSetting id="editor.open.tabs.in.main.window" default="false" groupKey="group.advanced.settings.editor.tabs" service="com.intellij.ide.ui.UISettings" property="openTabsInMainWindow"/>
     <advancedSetting id="terminal.buffer.max.lines.count" default="5000" groupKey="group.advanced.settings.terminal"/>
     <advancedSetting id="terminal.escape.moves.focus.to.editor" default="true" groupKey="group.advanced.settings.terminal"/>
 
     <backgroundPostStartupActivity implementation="com.intellij.ide.plugins.DependencyFeatureCollector"/>
     <projectService serviceInterface="com.intellij.presentation.FilePresentationService"
                     serviceImplementation="com.intellij.presentation.impl.FilePresentationServiceImpl"/>
-/  </extensions>
+
+    <advancedSetting id="show.diff.as.editor.tab" default="true" bundle="messages.DiffBundle" groupKey="advanced.settings.vcs"/>
+   </extensions>
   <extensions defaultExtensionNs="org.jetbrains">
     <urlOpener implementation="com.intellij.ide.browsers.impl.DefaultUrlOpener" order="last"/>
   </extensions>
@@ -1269,5 +1281,6 @@
 
     <listener class="com.intellij.ide.plugins.CreateAllServicesAndExtensionsActivity" topic="com.intellij.ide.AppLifecycleListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
+    <listener class="com.intellij.ide.actionsOnSave.impl.ActionsOnSaveFileDocumentManagerListener" topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
   </applicationListeners>
 </idea-plugin>

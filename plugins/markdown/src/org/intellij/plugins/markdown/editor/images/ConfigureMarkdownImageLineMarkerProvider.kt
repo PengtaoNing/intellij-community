@@ -32,7 +32,7 @@ internal class ConfigureMarkdownImageLineMarkerProvider : ConfigureImageLineMark
     val image = obtainOuterElement(element) ?: return null
     return ConfigureImageDialog(
       image.project,
-      MarkdownBundle.message("markdown.configure.image.line.marker.configure.command.name"),
+      MarkdownBundle.message("markdown.configure.image.title.text"),
       path = obtainPathText(element),
       linkTitle = image.collectLinkTitleText(),
       linkDescriptionText = image.collectLinkDescriptionText(),
@@ -47,15 +47,16 @@ internal class ConfigureMarkdownImageLineMarkerProvider : ConfigureImageLineMark
   private fun createHtmlReplacement(element: PsiElement, imageData: MarkdownImageData): PsiElement {
     // Inside paragraphs HTML is always represented by plain HTML_TAG element
     return when {
-      isInsideParagraph(element).also(::println) -> MarkdownPsiElementFactory.createHtmlImageTag(element.project, imageData)
+      isInsideParagraph(element) -> MarkdownPsiElementFactory.createHtmlImageTag(element.project, imageData)
       else -> MarkdownPsiElementFactory.createHtmlBlockWithImage(element.project, imageData)
     }
   }
 
   override fun applyChanges(element: PsiElement, imageData: MarkdownImageData) {
-    val project = element.project
+    val outerElement = obtainOuterElement(element) ?: return
+    val project = outerElement.project
     val replacement = when {
-      imageData.shouldConvertToHtml -> createHtmlReplacement(element, imageData)
+      imageData.shouldConvertToHtml -> createHtmlReplacement(outerElement, imageData)
       else -> MarkdownPsiElementFactory.createImage(
         project,
         imageData.description,
@@ -64,11 +65,11 @@ internal class ConfigureMarkdownImageLineMarkerProvider : ConfigureImageLineMark
       )
     }
     val action = Runnable {
-      element.replace(replacement)
+      outerElement.replace(replacement)
     }
     WriteCommandAction.runWriteCommandAction(
       project,
-      MarkdownBundle.message("markdown.configure.image.line.marker.configure.command.name"),
+      MarkdownBundle.message("markdown.configure.image.title.text"),
       null,
       action
     )

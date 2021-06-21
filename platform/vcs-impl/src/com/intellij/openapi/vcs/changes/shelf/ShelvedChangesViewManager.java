@@ -61,6 +61,7 @@ import com.intellij.ui.content.impl.ContentImpl;
 import com.intellij.util.Consumer;
 import com.intellij.util.IconUtil;
 import com.intellij.util.IconUtil.IconSizeWrapper;
+import com.intellij.util.ModalityUiUtil;
 import com.intellij.util.PathUtil;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.TreeTraversal;
@@ -287,7 +288,7 @@ public class ShelvedChangesViewManager implements Disposable {
   }
 
   private void runAfterUpdate(@NotNull Runnable postUpdateRunnable) {
-    GuiUtils.invokeLaterIfNeeded(() -> {
+    ModalityUiUtil.invokeLaterIfNeeded(() -> {
       myUpdateQueue.cancelAllUpdates();
       myPostUpdateEdtActivity.add(postUpdateRunnable);
       updateTreeModel();
@@ -758,6 +759,11 @@ public class ShelvedChangesViewManager implements Disposable {
     @NotNull
     private EditorTabPreview installEditorPreview(@NotNull MyShelvedPreviewProcessor changeProcessor) {
       EditorTabPreview editorPreview = new EditorTabPreview(changeProcessor) {
+        @Override
+        public void updateAvailability(@NotNull AnActionEvent event) {
+          DiffShelvedChangesActionProvider.updateAvailability(event);
+        }
+
         @Override
         protected String getCurrentName() {
           ShelvedWrapper myCurrentShelvedElement = changeProcessor.myCurrentShelvedElement;

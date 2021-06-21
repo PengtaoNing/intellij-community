@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch;
 
 import com.intellij.codeInsight.AnnotationUtil;
@@ -990,9 +990,11 @@ public final class JavaStructuralSearchProfile extends StructuralSearchProfile {
     final PsiElement parent = variableNode.getParent();
     if (parent instanceof PsiContinueStatement) return true;
     if (parent instanceof PsiBreakStatement) return true;
-    if (parent instanceof PsiPatternVariable) return true;
 
     final PsiElement grandParent = parent.getParent();
+    if (parent instanceof PsiPatternVariable && grandParent instanceof PsiTypeTestPattern) {
+      return !(grandParent.getParent() instanceof PsiParenthesizedPattern);
+    }
     if (grandParent instanceof PsiReferenceList) return true;
     if (grandParent instanceof PsiPolyadicExpression) {
       return ((PsiPolyadicExpression)grandParent).getOperands().length > 2;
@@ -1072,7 +1074,7 @@ public final class JavaStructuralSearchProfile extends StructuralSearchProfile {
     if (grandParent instanceof PsiCatchSection && parent instanceof PsiParameter) return true;
     if (grandParent instanceof PsiAnnotation && !(grandParent.getParent().getNextSibling() instanceof PsiErrorElement)) return true;
     if (grandParent instanceof PsiParameterList || grandParent instanceof PsiArrayInitializerMemberValue ||
-        grandParent instanceof PsiExpressionList ||
+        grandParent instanceof PsiExpressionList || grandParent instanceof PsiCaseLabelElementList ||
         grandParent instanceof PsiTypeParameterList || grandParent instanceof PsiResourceList ||
         grandParent instanceof PsiResourceExpression || grandParent instanceof PsiArrayInitializerExpression) {
       return true;

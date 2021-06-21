@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.pycharm
 
 import groovy.transform.CompileStatic
@@ -16,6 +16,7 @@ class PyCharmCommunityProperties extends PyCharmPropertiesBase {
     applicationInfoModule = "intellij.pycharm.community"
     brandingResourcePaths = ["$communityHome/python/resources"]
     scrambleMainJar = false
+    buildSourcesArchive = true
 
     productLayout.mainModules = ["intellij.pycharm.community.main"]
     productLayout.productApiModules = ["intellij.xml.dom"]
@@ -90,7 +91,6 @@ class PyCharmCommunityWindowsDistributionCustomizer extends PyCharmWindowsDistri
   PyCharmCommunityWindowsDistributionCustomizer(String projectHome) {
     icoPath = "$projectHome/python/resources/PyCharmCore.ico"
     icoPathForEAP = "$projectHome/python/resources/PyCharmCore_EAP.ico"
-    include32BitLauncher = false
     installerImagesPath = "$projectHome/python/build/resources"
     fileAssociations = ["py"]
   }
@@ -105,7 +105,6 @@ class PyCharmCommunityLinuxDistributionCustomizer extends LinuxDistributionCusto
   PyCharmCommunityLinuxDistributionCustomizer(projectHome) {
     iconPngPath = "$projectHome/python/resources/PyCharmCore128.png"
     iconPngPathForEAP = "$projectHome/python/resources/PyCharmCore128_EAP.png"
-    includeX86Files = false
   }
 
   @Override

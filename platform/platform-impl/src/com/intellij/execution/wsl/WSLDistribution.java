@@ -14,7 +14,9 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.NullableLazyValue;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
@@ -473,11 +475,14 @@ public class WSLDistribution {
    * @return Windows-dependent path for a file, pointed by {@code wslPath} in WSL, or {@code null} if path is unmappable
    */
 
-  public @Nullable @NlsSafe String getWindowsPath(@NotNull String wslPath) {
+  public @NotNull @NlsSafe String getWindowsPath(@NotNull String wslPath) {
     if (wslPath.startsWith(getMntRoot())) {
-      return WSLUtil.getWindowsPath(wslPath, getMntRoot());
+      String windowsPath = WSLUtil.getWindowsPath(wslPath, getMntRoot());
+      if (windowsPath != null) {
+        return windowsPath;
+      }
     }
-    return getUNCRoot() + FileUtil.toSystemDependentName(wslPath);
+    return getUNCRoot() + FileUtil.toSystemDependentName(FileUtil.normalize(wslPath));
   }
 
   /**
@@ -559,6 +564,7 @@ public class WSLDistribution {
   }
 
   /** @deprecated use {@link WSLDistribution#getUNCRootPath()} instead */
+  @ApiStatus.ScheduledForRemoval(inVersion = "2022.1")
   @Deprecated
   public @NotNull File getUNCRoot() {
     return new File(UNC_PREFIX + myDescriptor.getMsId());

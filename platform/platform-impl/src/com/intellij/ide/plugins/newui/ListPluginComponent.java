@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins.newui;
 
 import com.intellij.icons.AllIcons;
@@ -11,6 +11,7 @@ import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.Gray;
@@ -73,7 +74,7 @@ public class ListPluginComponent extends JPanel {
   private LicensePanel myLicensePanel;
   private LicensePanel myUpdateLicensePanel;
   private JPanel myErrorPanel;
-  private JComponent myErrorComponent;
+  private ErrorComponent myErrorComponent;
   private OneLineProgressIndicator myIndicator;
   private EventHandler myEventHandler;
   protected @NotNull EventHandler.SelectionType mySelection = EventHandler.SelectionType.NONE;
@@ -265,12 +266,15 @@ public class ListPluginComponent extends JPanel {
     myLayout.addLineComponent(myMetricsPanel);
 
     if (myMarketplace) {
-      String downloads = PluginManagerConfigurable.getDownloads(myPlugin);
+      assert myPlugin instanceof PluginNode;
+      PluginNode pluginNode = (PluginNode)myPlugin;
+
+      String downloads = pluginNode.getPresentableDownloads();
       if (downloads != null) {
         myDownloads = createRatingLabel(myMetricsPanel, downloads, AllIcons.Plugins.Downloads);
       }
 
-      String rating = PluginManagerConfigurable.getRating(myPlugin);
+      String rating = pluginNode.getPresentableRating();
       if (rating != null) {
         myRating = createRatingLabel(myMetricsPanel, rating, AllIcons.Plugins.Rating);
       }
@@ -363,12 +367,16 @@ public class ListPluginComponent extends JPanel {
         myMetricsPanel.remove(myVendor);
       }
 
-      String version = PluginManagerConfigurable.getVersion(descriptor, myPlugin);
-      String size = PluginManagerConfigurable.getSize(myPlugin);
-      if (!StringUtil.isEmpty(size)) {
-        version += " | " + size;
-      }
-      myVersion = createRatingLabel(myMetricsPanel, null, version, null, null, false);
+      String version = NewUiUtil.getVersion(descriptor, myPlugin);
+      String size = myPlugin instanceof PluginNode ?
+                    ((PluginNode)myPlugin).getPresentableSize() :
+                    null;
+      myVersion = createRatingLabel(myMetricsPanel,
+                                    null,
+                                    size != null ? version + " | " + size : version,
+                                    null,
+                                    null,
+                                    false);
     }
 
     updateColors(EventHandler.SelectionType.NONE);
@@ -405,7 +413,7 @@ public class ListPluginComponent extends JPanel {
     }
     else {
       if (myVersion != null) {
-        myVersion.setText(PluginManagerConfigurable.getVersion(myPlugin, descriptor));
+        myVersion.setText(NewUiUtil.getVersion(myPlugin, descriptor));
       }
       if (myPlugin.getProductCode() == null && descriptor.getProductCode() != null &&
           !myPlugin.isBundled() && !LicensePanel.isEA2Product(descriptor.getProductCode())) {
@@ -491,16 +499,17 @@ public class ListPluginComponent extends JPanel {
   }
 
   public void updateErrors() {
-    Ref<@Nls String> enableAction = new Ref<>();
-    String message = myOnlyUpdateMode ? null : myPluginModel.getErrorMessage(myPlugin, enableAction);
-    boolean errors = message != null;
-    updateIcon(errors, myPluginModel.isUninstalled(myPlugin) || !isEnabledState());
+    List<? extends HtmlChunk> errors = myOnlyUpdateMode ?
+                                       List.of() :
+                                       myPluginModel.getErrors(myPlugin);
+    boolean hasErrors = !errors.isEmpty();
+    updateIcon(hasErrors, myPluginModel.isUninstalled(myPlugin) || !isEnabledState());
 
     if (myAlignButton != null) {
       myAlignButton.setVisible(myRestartButton != null);
     }
 
-    if (errors) {
+    if (hasErrors) {
       boolean addListeners = myErrorComponent == null && myEventHandler != null;
 
       if (myErrorPanel == null) {
@@ -508,9 +517,13 @@ public class ListPluginComponent extends JPanel {
         myLayout.addLineComponent(myErrorPanel);
       }
 
-      myErrorComponent = ErrorComponent.show(myErrorPanel, BorderLayout.CENTER, myErrorComponent, message, enableAction.get(),
-                                             enableAction.isNull() ? null : () -> myPluginModel.enableRequiredPlugins(myPlugin));
-      myErrorComponent.setBorder(JBUI.Borders.emptyTop(5));
+      if (myErrorComponent == null) {
+        myErrorComponent = new ErrorComponent();
+        myErrorComponent.setBorder(JBUI.Borders.emptyTop(5));
+        myErrorPanel.add(myErrorComponent, BorderLayout.CENTER);
+      }
+      myErrorComponent.setErrors(errors,
+                                 () -> myPluginModel.enableRequiredPlugins(myPlugin));
 
       if (addListeners) {
         myEventHandler.addAll(myErrorPanel);
@@ -523,10 +536,10 @@ public class ListPluginComponent extends JPanel {
     }
 
     if (myLicensePanel != null) {
-      myLicensePanel.setVisible(!errors);
+      myLicensePanel.setVisible(!hasErrors);
     }
     if (myUpdateLicensePanel != null) {
-      myUpdateLicensePanel.setVisible(!errors);
+      myUpdateLicensePanel.setVisible(!hasErrors);
     }
   }
 
@@ -658,7 +671,7 @@ public class ListPluginComponent extends JPanel {
   }
 
   public void createPopupMenu(@NotNull DefaultActionGroup group,
-                              @NotNull List<ListPluginComponent> selection) {
+                              @NotNull List<? extends ListPluginComponent> selection) {
     if (myOnlyUpdateMode) {
       return;
     }
@@ -716,15 +729,13 @@ public class ListPluginComponent extends JPanel {
       }
     }
 
-    SelectionBasedPluginModelAction.addActionsTo(
-      group,
-      action -> createEnableDisableAction(action, selection),
-      () -> createUninstallAction(selection)
-    );
+    SelectionBasedPluginModelAction.addActionsTo(group,
+                                                 action -> createEnableDisableAction(action, selection),
+                                                 () -> createUninstallAction(selection));
   }
 
   public void handleKeyAction(@NotNull KeyEvent event,
-                              @NotNull List<ListPluginComponent> selection) {
+                              @NotNull List<? extends ListPluginComponent> selection) {
     if (myOnlyUpdateMode) {
       if (event.getKeyCode() == KeyEvent.VK_SPACE) {
         for (ListPluginComponent component : selection) {
@@ -811,18 +822,18 @@ public class ListPluginComponent extends JPanel {
     parent.repaint();
   }
 
-  public @NotNull IdeaPluginDescriptor getPluginDescriptor() {
+  public final @NotNull IdeaPluginDescriptor getPluginDescriptor() {
     return myPlugin;
   }
 
-  public void setPluginDescriptor(@NotNull IdeaPluginDescriptor plugin) {
+  public final void setPluginDescriptor(@NotNull IdeaPluginDescriptor plugin) {
     myPlugin = plugin;
   }
 
-  private @NotNull PluginEnableDisableAction getEnableDisableAction(@NotNull List<ListPluginComponent> selection) {
-    Iterator<ListPluginComponent> iterator = selection.iterator();
+  private @NotNull PluginEnableDisableAction getEnableDisableAction(@NotNull List<? extends ListPluginComponent> selection) {
+    Iterator<? extends ListPluginComponent> iterator = selection.iterator();
     BooleanSupplier isGloballyEnabledGenerator = () ->
-      myPluginModel.getState(iterator.next().myPlugin) == PluginEnabledState.ENABLED;
+      myPluginModel.getState(iterator.next().getPluginDescriptor()) == PluginEnabledState.ENABLED;
 
     boolean firstDisabled = !isGloballyEnabledGenerator.getAsBoolean();
     while (iterator.hasNext()) {
@@ -835,7 +846,7 @@ public class ListPluginComponent extends JPanel {
   }
 
   private @NotNull SelectionBasedPluginModelAction.EnableDisableAction<ListPluginComponent> createEnableDisableAction(@NotNull PluginEnableDisableAction action,
-                                                                                                                      @NotNull List<ListPluginComponent> selection) {
+                                                                                                                      @NotNull List<? extends ListPluginComponent> selection) {
     return new SelectionBasedPluginModelAction.EnableDisableAction<>(myPluginModel,
                                                                      action,
                                                                      true,
@@ -843,7 +854,7 @@ public class ListPluginComponent extends JPanel {
                                                                      ListPluginComponent::getPluginDescriptor);
   }
 
-  private @NotNull SelectionBasedPluginModelAction.UninstallAction<ListPluginComponent> createUninstallAction(@NotNull List<ListPluginComponent> selection) {
+  private @NotNull SelectionBasedPluginModelAction.UninstallAction<ListPluginComponent> createUninstallAction(@NotNull List<? extends ListPluginComponent> selection) {
     return new SelectionBasedPluginModelAction.UninstallAction<>(myPluginModel,
                                                                  true,
                                                                  this,

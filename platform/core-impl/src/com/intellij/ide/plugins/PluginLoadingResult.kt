@@ -65,7 +65,7 @@ class PluginLoadingResult(private val brokenPluginVersions: Map<PluginId, Set<St
 
   internal fun addIncompletePlugin(plugin: IdeaPluginDescriptorImpl, error: PluginLoadingError?) {
     if (!idMap.containsKey(plugin.pluginId)) {
-      val existingIncompletePlugin = incompletePlugins[plugin.pluginId]
+      val existingIncompletePlugin = incompletePlugins.get(plugin.pluginId)
       if (existingIncompletePlugin == null || VersionComparatorUtil.compare(plugin.version, existingIncompletePlugin.version) > 0) {
         incompletePlugins.put(plugin.pluginId, plugin)
       }
@@ -96,18 +96,22 @@ class PluginLoadingResult(private val brokenPluginVersions: Map<PluginId, Set<St
       return true
     }
 
-    if (!descriptor.isBundled) {
-      if (checkModuleDependencies && !PluginManagerCore.hasModuleDependencies(descriptor)) {
-        val error = PluginLoadingError(plugin = descriptor,
-                                       detailedMessageSupplier = { CoreBundle.message("plugin.loading.error.long.compatible.with.intellij.idea.only", descriptor.name) },
-                                       shortMessageSupplier = { CoreBundle.message("plugin.loading.error.short.compatible.with.intellij.idea.only") },
-                                       isNotifyUser = true)
-        addIncompletePlugin(descriptor, error)
-        return false
-      }
+    if (checkModuleDependencies &&
+        !descriptor.isBundled && descriptor.packagePrefix == null &&
+        !PluginManagerCore.hasModuleDependencies(descriptor)) {
+      val error = PluginLoadingError(plugin = descriptor,
+                                     detailedMessageSupplier = {
+                                       CoreBundle.message("plugin.loading.error.long.compatible.with.intellij.idea.only", descriptor.name)
+                                     },
+                                     shortMessageSupplier = {
+                                       CoreBundle.message("plugin.loading.error.short.compatible.with.intellij.idea.only")
+                                     },
+                                     isNotifyUser = true)
+      addIncompletePlugin(descriptor, error)
+      return false
     }
 
-    // remove any error that occurred for plugin with the same id
+    // remove any error that occurred for plugin with the same `id`
     pluginErrors.remove(pluginId)
     incompletePlugins.remove(pluginId)
     val prevDescriptor = plugins.put(pluginId, descriptor)

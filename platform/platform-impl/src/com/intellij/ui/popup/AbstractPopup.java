@@ -21,7 +21,6 @@ import com.intellij.openapi.application.TransactionGuard;
 import com.intellij.openapi.application.TransactionGuardImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.EditorActivityManager;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
@@ -83,7 +82,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   private WindowResizeListener myResizeListener;
   private WindowMoveListener myMoveListener;
   private JPanel myHeaderPanel;
-  private JPanel myBottomPanel;
   private CaptionPanel myCaption;
   private JComponent myComponent;
   private SpeedSearch mySpeedSearchFoundInRootComponent;
@@ -124,7 +122,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   private boolean myHeaderAlwaysFocusable;
   private boolean myMovable;
   private JComponent myHeaderComponent;
-  private JComponent myBottomComponent;
 
   InputEvent myDisposeEvent;
 
@@ -274,7 +271,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
     ActiveIcon actualIcon = titleIcon == null ? new ActiveIcon(EmptyIcon.ICON_0) : titleIcon;
 
     myHeaderPanel = new JPanel(new BorderLayout());
-    myBottomPanel = new JPanel(new BorderLayout());
 
     if (caption != null) {
       if (!caption.isEmpty()) {
@@ -310,7 +306,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
 
     myHeaderPanel.add(myCaption, BorderLayout.NORTH);
     myContent.add(myHeaderPanel, BorderLayout.NORTH);
-    myContent.add(myBottomPanel, BorderLayout.SOUTH);
 
     myForcedHeavyweight = true;
     myResizable = resizable;
@@ -601,7 +596,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   public void showInBestPositionFor(@NotNull Editor editor) {
     // Intercept before the following assert; otherwise assertion may fail
     if (UiInterceptors.tryIntercept(this)) return;
-    assert EditorActivityManager.getInstance().isVisible(editor) : "Editor must be showing on the screen";
+    assert UIUtil.isShowing(editor.getContentComponent()) : "Editor must be showing on the screen";
 
     // Set the accessible parent so that screen readers don't announce
     // a window context change -- the tooltip is "logically" hosted
@@ -1445,6 +1440,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
 
   @Override
   public void dispose() {
+    ApplicationManager.getApplication().assertIsDispatchThread();
     if (myState == State.SHOWN) {
       LOG.debug("shown popup must be cancelled");
       cancel();
@@ -1466,8 +1462,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
     }
 
     Disposer.dispose(this, false);
-
-    ApplicationManager.getApplication().assertIsDispatchThread();
 
     if (myPopup != null) {
       cancel(myDisposeEvent);

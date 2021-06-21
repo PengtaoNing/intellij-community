@@ -51,11 +51,11 @@ class SourceOptionQuickFix : MavenLoggedEventParser {
                             logLine: MavenLogEntry,
                             logEntryReader: MavenLogEntryReader,
                             messageConsumer: Consumer<in BuildEvent?>): Boolean {
-    if (logLine.line.startsWith("Source option 5 is no longer supported. Use 6 or later")
+    if (logLine.line.startsWith("Source option 5 is no longer supported.")
         || logLine.line.startsWith("Source option 1.5 is no longer supported.")) {
       val targetLine = logEntryReader.readLine()
 
-      if (targetLine != null && !targetLine.line.startsWith("Target option 1.5 is no longer supported. Use 1.6 or later.")) {
+      if (targetLine != null && !targetLine.line.startsWith("Target option 1.5 is no longer supported.")) {
         logEntryReader.pushBack()
       }
 
@@ -115,8 +115,8 @@ class JpsReleaseVersionQuickFix : BuildIssueContributor {
     val moduleName = moduleNames.firstOrNull() ?: return null
     val predicates = CacheForCompilerErrorMessages.getPredicatesToCheck(project, moduleName)
     val failedId = extractFailedMavenId(project, moduleName) ?: return null;
-    val mavenProject = MavenProjectsManager.getInstance(project).findProject(failedId) ?: return null
-    val moduleJdk = MavenUtil.getModuleJdk(MavenProjectsManager.getInstance(project), mavenProject) ?: return null
+    val mavenProject = manager.findProject(failedId) ?: return null
+    val moduleJdk = MavenUtil.getModuleJdk(manager, mavenProject) ?: return null
 
     if (predicates.any { it(message) }) return SourceLevelBuildIssue(title, message, mavenProject, moduleJdk)
     return null
@@ -151,6 +151,8 @@ object CacheForCompilerErrorMessages {
   }
 
   private val DEFAULT_CHECK = listOf<MessagePredicate>(
+    { it.contains("source release") && it.contains("requires target release") },
+    { it.contains("invalid target release") },
     { it.contains("release version") && it.contains("not supported") }, //en
     {
       it.contains("\u30EA\u30EA\u30FC\u30B9\u30FB\u30D0\u30FC\u30B8\u30E7\u30F3")
@@ -211,7 +213,6 @@ object CacheForCompilerErrorMessages {
     }
   }
 
-
   private fun readFromBinaryFile(file: VirtualFile?): MessagePredicate? {
     if (file == null) return null
     try {
@@ -220,7 +221,7 @@ object CacheForCompilerErrorMessages {
       if (indexKey == -1) return null
       val startFrom = indexKey + key.size + 3;
       val endIndex = allBytes.findNextSOH(startFrom)
-      if (endIndex == -1) return null
+      if (endIndex == -1 || startFrom == endIndex) return null
       val message = String(allBytes, startFrom, endIndex - startFrom, StandardCharsets.UTF_8)
       return toMessagePredicate(message);
     }
@@ -228,7 +229,6 @@ object CacheForCompilerErrorMessages {
       MavenLog.LOG.warn(e);
       return null
     }
-
   }
 
   private fun toMessagePredicate(message: String): MessagePredicate? {

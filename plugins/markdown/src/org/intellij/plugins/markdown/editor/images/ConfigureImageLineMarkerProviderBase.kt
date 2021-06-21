@@ -4,12 +4,15 @@ package org.intellij.plugins.markdown.editor.images
 import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProviderDescriptor
 import com.intellij.codeInsight.daemon.MergeableLineMarkerInfo
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiElement
+import icons.MarkdownIcons
 import org.intellij.plugins.markdown.MarkdownBundle
-import java.nio.file.Path
+import java.net.URI
+import java.nio.file.InvalidPathException
+import java.nio.file.Paths
 import javax.swing.Icon
 
 internal abstract class ConfigureImageLineMarkerProviderBase<T : PsiElement> : LineMarkerProviderDescriptor() {
@@ -50,10 +53,22 @@ internal abstract class ConfigureImageLineMarkerProviderBase<T : PsiElement> : L
     return MarkdownBundle.message("markdown.configure.markdown.image.line.marker.provider.name")
   }
 
+  private fun processFileName(filePath: String): String? {
+    try {
+      // Path can be eiter a URL or a system path
+      val uri = URI.create(FileUtil.toSystemIndependentName(filePath)).path
+      return Paths.get(uri).fileName?.toString()
+    } catch (exception: IllegalArgumentException) {
+      return null
+    } catch (exception: InvalidPathException) {
+      return null
+    }
+  }
+
   private fun getMarkerElementPresentation(element: PsiElement): String {
-    val fileName = obtainPathText(element)?.let { Path.of(it).fileName.toString() } ?: ""
+    val fileName = obtainPathText(element)?.let(::processFileName) ?: ""
     return when {
-      fileName.isEmpty() -> MarkdownBundle.message("markdown.setup.image.line.marker.text")
+      fileName.isEmpty() -> MarkdownBundle.message("markdown.configure.image.text")
       else -> MarkdownBundle.message("markdown.configure.image.line.marker.presentation", fileName)
     }
   }
@@ -64,11 +79,11 @@ internal abstract class ConfigureImageLineMarkerProviderBase<T : PsiElement> : L
   ) : MergeableLineMarkerInfo<PsiElement>(
     element,
     textRange,
-    AllIcons.General.LayoutPreviewOnly,
+    MarkdownIcons.ImageGutter,
     ::getMarkerElementPresentation,
     { _, e -> performAction(e) },
     ALIGNMENT,
-    { MarkdownBundle.message("markdown.configure.image.line.marker.configure.command.name") }
+    { MarkdownBundle.message("markdown.configure.image.text") }
   ) {
     override fun getElementPresentation(element: PsiElement): String {
       return getMarkerElementPresentation(element)

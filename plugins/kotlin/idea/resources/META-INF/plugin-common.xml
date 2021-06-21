@@ -707,7 +707,7 @@
 
     <applicationService serviceImplementation="org.jetbrains.kotlin.idea.codeInsight.KotlinCodeInsightSettings"/>
 
-    <referenceImporter implementation="org.jetbrains.kotlin.idea.quickfix.KotlinReferenceImporter"/>
+    <referenceImporter implementation="org.jetbrains.kotlin.idea.codeInsight.KotlinReferenceImporter"/>
     <autoImportOptionsProvider instance="org.jetbrains.kotlin.idea.codeInsight.KotlinCodeInsightWorkspaceSettingsProvider"/>
 
     <fileType.fileViewProviderFactory filetype="KJSM" implementationClass="com.intellij.psi.ClassFileViewProviderFactory"/>
@@ -732,6 +732,8 @@
 
     <statistics.counterUsagesCollector groupId="kotlin.code.vision" version="1"/>
     <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.codevision.KotlinCodeVisionProvider"/>
+
+    <psi.referenceContributor implementation="org.jetbrains.kotlin.idea.references.KotlinWebReferenceContributor"/>
   </extensions>
 
   <resource-bundle>messages.KotlinBundle</resource-bundle>

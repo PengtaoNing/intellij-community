@@ -3,7 +3,6 @@ package git4idea.index
 
 import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
-import com.intellij.idea.Bombed
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.application.runWriteAction
@@ -11,17 +10,16 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.Executor
+import com.intellij.openapi.vcs.VcsConfiguration
 import com.intellij.testFramework.UsefulTestCase
 import com.intellij.vcsUtil.VcsUtil
 import git4idea.index.vfs.GitIndexFileSystemRefresher
 import git4idea.test.GitSingleRepoTest
 import junit.framework.TestCase
 import org.apache.commons.lang.RandomStringUtils
-import java.util.*
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 
-@Bombed(year = 2021, month = Calendar.JUNE, day = 16, user = "Julia Beliaeva")
 class GitStageTrackerTest : GitSingleRepoTest() {
   private var _tracker: GitStageTracker? = null
 
@@ -29,6 +27,8 @@ class GitStageTrackerTest : GitSingleRepoTest() {
 
   override fun setUp() {
     super.setUp()
+    VcsConfiguration.StandardConfirmation.ADD.doNothing()
+    repo.untrackedFilesHolder.createWaiter().waitFor()
     _tracker = GitStageTracker(project)
   }
 
@@ -36,6 +36,7 @@ class GitStageTrackerTest : GitSingleRepoTest() {
     val t = _tracker
     _tracker = null
     t?.let { Disposer.dispose(it) }
+    repo.untrackedFilesHolder.createWaiter().waitFor()
     super.tearDown()
   }
 

@@ -430,9 +430,9 @@ public final class StubIndexImpl extends StubIndexEx {
       return true;
     }
 
-    //if (idFilter == null) {
-    //  idFilter = fileBasedIndexEx.projectIndexableFiles(scope.getProject());
-    //}
+    if (idFilter == null) {
+      idFilter = fileBasedIndexEx.extractIdFilter(scope, scope.getProject());
+    }
 
     try {
       @Nullable IdFilter finalIdFilter = idFilter;
@@ -500,7 +500,9 @@ public final class StubIndexImpl extends StubIndexEx {
     final UpdatableIndex<Key, Void, FileContent> index = getIndex(indexKey);   // wait for initialization to finish
     if (index == null || !fileBasedIndex.ensureUpToDate(stubUpdatingIndexId, project, scope, null)) return null;
 
-    IdFilter finalIdFilter = idFilter != null ? idFilter : ((FileBasedIndexEx)FileBasedIndex.getInstance()).projectIndexableFiles(project);
+    IdFilter finalIdFilter = idFilter != null
+                             ? idFilter
+                             : ((FileBasedIndexEx)FileBasedIndex.getInstance()).extractIdFilter(scope, project);
 
     UpdatableIndex<Integer, SerializedStubTree, FileContent> stubUpdatingIndex = fileBasedIndex.getIndex(stubUpdatingIndexId);
 

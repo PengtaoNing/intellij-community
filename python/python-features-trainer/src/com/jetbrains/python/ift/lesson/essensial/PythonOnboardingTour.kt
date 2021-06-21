@@ -44,13 +44,14 @@ import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.ift.PythonLessonsBundle
 import com.jetbrains.python.ift.PythonLessonsUtil
-import icons.FeaturesTrainerIcons
+import training.FeaturesTrainerIcons
 import org.intellij.lang.annotations.Language
 import org.jetbrains.annotations.Nls
 import training.dsl.*
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.dsl.LessonUtil.restoreIfModified
 import training.dsl.LessonUtil.restoreIfModifiedOrMoved
+import training.dsl.LessonUtil.restorePopupPosition
 import training.learn.LearnBundle
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
@@ -144,12 +145,8 @@ class PythonOnboardingTour :
   }
 
   override fun onLessonEnd(project: Project, lessonPassed: Boolean) {
-    if (backupPopupLocation != null) {
-      invokeLater {
-        WindowStateService.getInstance(project).putLocation(SearchEverywhereManagerImpl.LOCATION_SETTINGS_KEY, backupPopupLocation)
-        backupPopupLocation = null
-      }
-    }
+    restorePopupPosition(project, SearchEverywhereManagerImpl.LOCATION_SETTINGS_KEY, backupPopupLocation)
+    backupPopupLocation = null
     if (!lessonPassed) return
     invokeLater {
       val result = MessageDialogBuilder.yesNoCancel(PythonLessonsBundle.message("python.onboarding.finish.title"),
@@ -554,6 +551,7 @@ class PythonOnboardingTour :
 
     task {
       before {
+        if (backupPopupLocation != null) return@before
         val ui = previous.ui ?: return@before
         val popupWindow = UIUtil.getParentOfType(JWindow::class.java, ui) ?: return@before
         val oldPopupLocation = WindowStateService.getInstance(project).getLocation(SearchEverywhereManagerImpl.LOCATION_SETTINGS_KEY)

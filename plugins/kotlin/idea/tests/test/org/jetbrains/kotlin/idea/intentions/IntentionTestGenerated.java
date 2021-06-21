@@ -2842,6 +2842,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
                     runTest("testData/intentions/branched/ifWhen/whenToIf/whenTrueOrFalse3.kt");
                 }
 
+                @TestMetadata("whenTrueOrFalse4.kt")
+                public void testWhenTrueOrFalse4() throws Exception {
+                    runTest("testData/intentions/branched/ifWhen/whenToIf/whenTrueOrFalse4.kt");
+                }
+
                 @TestMetadata("whenWithDotQualifiedExpression.kt")
                 public void testWhenWithDotQualifiedExpression() throws Exception {
                     runTest("testData/intentions/branched/ifWhen/whenToIf/whenWithDotQualifiedExpression.kt");
@@ -4531,6 +4536,19 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("replaceLinkedHashSetCall.kt")
         public void testReplaceLinkedHashSetCall() throws Exception {
             runTest("testData/intentions/convertCollectionConstructorToFunction/replaceLinkedHashSetCall.kt");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("testData/intentions/convertConcatenationToBuildString")
+    public static class ConvertConcatenationToBuildString extends AbstractIntentionTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        @TestMetadata("basic.kt")
+        public void testBasic() throws Exception {
+            runTest("testData/intentions/convertConcatenationToBuildString/basic.kt");
         }
     }
 
@@ -6266,6 +6284,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
             runTest("testData/intentions/convertPrimaryConstructorToSecondary/initWithoutAssignments.kt");
         }
 
+        @TestMetadata("inlineClass.kt")
+        public void testInlineClass() throws Exception {
+            runTest("testData/intentions/convertPrimaryConstructorToSecondary/inlineClass.kt");
+        }
+
         @TestMetadata("noArgName.kt")
         public void testNoArgName() throws Exception {
             runTest("testData/intentions/convertPrimaryConstructorToSecondary/noArgName.kt");
@@ -6304,6 +6327,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("useParamChain.kt")
         public void testUseParamChain() throws Exception {
             runTest("testData/intentions/convertPrimaryConstructorToSecondary/useParamChain.kt");
+        }
+
+        @TestMetadata("valueClass.kt")
+        public void testValueClass() throws Exception {
+            runTest("testData/intentions/convertPrimaryConstructorToSecondary/valueClass.kt");
         }
 
         @TestMetadata("vararg.kt")
@@ -9328,6 +9356,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
             runTest("testData/intentions/expandBooleanExpression/call.kt");
         }
 
+        @TestMetadata("caretOnBrace.kt")
+        public void testCaretOnBrace() throws Exception {
+            runTest("testData/intentions/expandBooleanExpression/caretOnBrace.kt");
+        }
+
         @TestMetadata("constant.kt")
         public void testConstant() throws Exception {
             runTest("testData/intentions/expandBooleanExpression/constant.kt");
@@ -10060,6 +10093,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("jvmField.kt")
         public void testJvmField() throws Exception {
             runTest("testData/intentions/introduceBackingProperty/jvmField.kt");
+        }
+
+        @TestMetadata("lateinitVar.kt")
+        public void testLateinitVar() throws Exception {
+            runTest("testData/intentions/introduceBackingProperty/lateinitVar.kt");
         }
 
         @TestMetadata("semicolon.kt")
@@ -12968,6 +13006,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
             runTest("testData/intentions/movePropertyToClassBody/dataClass.kt");
         }
 
+        @TestMetadata("inlineClass.kt")
+        public void testInlineClass() throws Exception {
+            runTest("testData/intentions/movePropertyToClassBody/inlineClass.kt");
+        }
+
         @TestMetadata("location1.kt")
         public void testLocation1() throws Exception {
             runTest("testData/intentions/movePropertyToClassBody/location1.kt");
@@ -12991,6 +13034,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("simple.kt")
         public void testSimple() throws Exception {
             runTest("testData/intentions/movePropertyToClassBody/simple.kt");
+        }
+
+        @TestMetadata("valueClass.kt")
+        public void testValueClass() throws Exception {
+            runTest("testData/intentions/movePropertyToClassBody/valueClass.kt");
         }
 
         @TestMetadata("vararg.kt")
@@ -13780,6 +13828,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
             runTest("testData/intentions/removeBraces/doWhile.kt");
         }
 
+        @TestMetadata("doWhileWithLocalClass.kt")
+        public void testDoWhileWithLocalClass() throws Exception {
+            runTest("testData/intentions/removeBraces/doWhileWithLocalClass.kt");
+        }
+
         @TestMetadata("doWhileWithLocalVariable.kt")
         public void testDoWhileWithLocalVariable() throws Exception {
             runTest("testData/intentions/removeBraces/doWhileWithLocalVariable.kt");
@@ -13818,6 +13871,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("for.kt")
         public void testFor() throws Exception {
             runTest("testData/intentions/removeBraces/for.kt");
+        }
+
+        @TestMetadata("forWithLocalClass.kt")
+        public void testForWithLocalClass() throws Exception {
+            runTest("testData/intentions/removeBraces/forWithLocalClass.kt");
         }
 
         @TestMetadata("forWithLocalVariable.kt")
@@ -13888,6 +13946,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("ifWithComment.kt")
         public void testIfWithComment() throws Exception {
             runTest("testData/intentions/removeBraces/ifWithComment.kt");
+        }
+
+        @TestMetadata("ifWithLocalClass.kt")
+        public void testIfWithLocalClass() throws Exception {
+            runTest("testData/intentions/removeBraces/ifWithLocalClass.kt");
         }
 
         @TestMetadata("ifWithLocalVariable.kt")
@@ -13973,6 +14036,11 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("whileOutsideBlock.kt")
         public void testWhileOutsideBlock() throws Exception {
             runTest("testData/intentions/removeBraces/whileOutsideBlock.kt");
+        }
+
+        @TestMetadata("whileWithLocalClass.kt")
+        public void testWhileWithLocalClass() throws Exception {
+            runTest("testData/intentions/removeBraces/whileWithLocalClass.kt");
         }
 
         @TestMetadata("whileWithLocalVariable.kt")

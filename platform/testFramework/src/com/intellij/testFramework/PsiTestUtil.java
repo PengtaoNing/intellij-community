@@ -11,10 +11,10 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.ModuleType;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkModificator;
 import com.intellij.openapi.roots.*;
-import com.intellij.openapi.roots.impl.ContentEntryImpl;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTable;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
@@ -62,6 +62,9 @@ public final class PsiTestUtil {
   public static void removeAllRoots(@NotNull Module module, Sdk jdk) {
     ModuleRootModificationUtil.updateModel(module, model -> {
       model.clear();
+      if (jdk != null && ApplicationManager.getApplication().isUnitTestMode()) {
+        WriteAction.runAndWait(() -> ProjectJdkTable.getInstance().addJdk(jdk, module.getProject()));
+      }
       model.setSdk(jdk);
     });
   }
@@ -122,9 +125,6 @@ public final class PsiTestUtil {
 
     for (ContentEntry entry : ModuleRootManager.getInstance(module).getContentEntries()) {
       if (Comparing.equal(entry.getFile(), vDir)) {
-        if (entry instanceof ContentEntryImpl) {
-          Assert.assertFalse(((ContentEntryImpl)entry).isDisposed());
-        }
         return entry;
       }
     }

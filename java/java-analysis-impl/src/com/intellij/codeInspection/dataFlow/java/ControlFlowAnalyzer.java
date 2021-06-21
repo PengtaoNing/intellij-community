@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.dataFlow.java;
 
 import com.intellij.codeInsight.ExceptionUtil;
@@ -1590,11 +1590,11 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
   @Override public void visitInstanceOfExpression(PsiInstanceOfExpression expression) {
     startElement(expression);
     PsiPattern pattern = expression.getPattern();
-    if (pattern instanceof PsiTypeTestPattern) {
-      PsiExpression operand = expression.getOperand();
-      PsiTypeElement checkType = ((PsiTypeTestPattern)pattern).getCheckType();
+    PsiExpression operand = expression.getOperand();
+    CFGBuilder builder = new CFGBuilder(this);
+    PsiTypeElement checkType = expression.getCheckType();
+    if (pattern instanceof PsiTypeTestPattern && checkType != null) {
       PsiType type = checkType.getType();
-      CFGBuilder builder = new CFGBuilder(this);
       PsiPatternVariable variable = ((PsiTypeTestPattern)pattern).getPatternVariable();
       if (variable != null) {
         DfaVariableValue dfaVar = PlainDescriptor.createVariableValue(getFactory(), variable);
@@ -1612,7 +1612,7 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
         builder
           .dup()
           .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
-          .isInstance(expression, operand, type)
+          .isInstance(expression)
           .ifConditionIs(false)
           .pop()
           .push(DfTypes.FALSE)
@@ -1624,17 +1624,27 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
           .push(DfTypes.TRUE)
           .end();
       } else {
-        builder
-          .pushExpression(operand)
-          .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
-          .isInstance(expression, operand, type);
+        buildSimpleInstanceof(builder, expression, operand, checkType);
       }
+    }
+    else if (checkType != null) {
+      buildSimpleInstanceof(builder, expression, operand, checkType);
     }
     else {
       pushUnknown();
     }
-
     finishElement(expression);
+  }
+
+  private static void buildSimpleInstanceof(CFGBuilder builder,
+                                            PsiInstanceOfExpression expression,
+                                            PsiExpression operand,
+                                            PsiTypeElement checkType) {
+    PsiType type = checkType.getType();
+    builder
+      .pushExpression(operand)
+      .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
+      .isInstance(expression);
   }
 
   void addMethodThrows(PsiMethod method) {

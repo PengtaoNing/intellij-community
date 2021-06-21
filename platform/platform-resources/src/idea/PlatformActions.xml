@@ -678,12 +678,8 @@
           <action id="MethodUp" class="com.intellij.codeInsight.navigation.actions.MethodUpAction"/>
           <separator/>
           <group id="TemplateParametersNavigation">
-            <action id="NextTemplateParameter" class="com.intellij.codeInsight.completion.NextPrevParameterAction$Next">
-              <keyboard-shortcut first-keystroke="TAB" keymap="$default"/>
-            </action>
-            <action id="PrevTemplateParameter" class="com.intellij.codeInsight.completion.NextPrevParameterAction$Prev">
-              <keyboard-shortcut first-keystroke="shift TAB" keymap="$default"/>
-            </action>
+            <action id="NextTemplateParameter" class="com.intellij.codeInsight.completion.NextPrevParameterAction$Next"/>
+            <action id="PrevTemplateParameter" class="com.intellij.codeInsight.completion.NextPrevParameterAction$Prev"/>
           </group>
           <action id="GotoCustomRegion" class="com.intellij.lang.customFolding.GotoCustomRegionAction"/>
         </group>
@@ -805,17 +801,18 @@
         <action id="GotoAction" class="com.intellij.ide.actions.GotoActionAction"/>
         <separator/>
         <action id="HelpTopics" class="com.intellij.ide.actions.HelpTopicsAction" icon="AllIcons.Actions.Help"/>
-        <action id="OnlineDocAction" class="com.intellij.ide.actions.OnlineDocAction"/>
-        <action id="Help.KeymapReference" class="com.intellij.ide.actions.RefCardAction"/>
-        <action id="Help.JetBrainsTV" class="com.intellij.ide.actions.JetBrainsTvAction"/>
-        <action id="ShowTips" class="com.intellij.ide.actions.ShowTipsAction"/>
         <action id="WhatsNewAction" class="com.intellij.ide.actions.WhatsNewAction"/>
+        <action id="OnlineDocAction" class="com.intellij.ide.actions.OnlineDocAction"/>
+        <action id="Help.JetBrainsTV" class="com.intellij.ide.actions.JetBrainsTvAction"/>
+        <action id="Help.KeymapReference" class="com.intellij.ide.actions.RefCardAction"/>
+        <action id="ShowTips" class="com.intellij.ide.actions.ShowTipsAction"/>
         <separator/>
         <action id="ProductivityGuide" class="com.intellij.featureStatistics.actions.ShowFeatureUsageStatisticsAction"/>
         <separator/>
         <action id="TechnicalSupport" class="com.intellij.ide.actions.TechnicalSupportAction"/>
         <action id="ReportProblem" class="com.intellij.ide.actions.ReportProblemAction"/>
         <action id="SendFeedback" class="com.intellij.ide.actions.SendFeedbackAction"/>
+        <separator/>
         <action id="OpenLog" internal="true" class="com.intellij.internal.OpenLogAction"/>
         <action id="ShowLog" class="com.intellij.ide.actions.ShowLogAction">
           <synonym key="action.ShowLog.Finder.text"/>
@@ -988,14 +985,16 @@
 
     <group id="WelcomeScreenRecentProjectActionGroup">
       <action id="WelcomeScreen.OpenSelected" class="com.intellij.openapi.wm.impl.welcomeScreen.OpenSelectedProjectsAction"/>
-      <action id="WelcomeScreen.NewGroup" class="com.intellij.openapi.wm.impl.welcomeScreen.CreateNewProjectGroupAction"/>
-      <action id="WelcomeScreen.EditGroup" class="com.intellij.openapi.wm.impl.welcomeScreen.EditProjectGroupAction"/>
-      <group id="WelcomeScreen.MoveToGroup" class="com.intellij.openapi.wm.impl.welcomeScreen.MoveProjectToGroupActionGroup"
-             popup="true"/>
-      <action id="WelcomeScreen.ChangeProjectIcon" class="com.intellij.openapi.wm.impl.welcomeScreen.ChangeProjectIconAction"/>
+      <action id="WelcomeScreen.RevealIn" class="com.intellij.openapi.wm.impl.welcomeScreen.RevealProjectDirAction" />
       <action id="WelcomeScreen.CopyProjectPath" class="com.intellij.openapi.wm.impl.welcomeScreen.CopyProjectPathAction"
               use-shortcut-of="CopyPaths"/>
-      <action id="WelcomeScreen.RevealIn" class="com.intellij.openapi.wm.impl.welcomeScreen.RevealProjectDirAction" />
+      <separator/>
+      <action id="WelcomeScreen.NewGroup" class="com.intellij.openapi.wm.impl.welcomeScreen.CreateNewProjectGroupAction"/>
+      <group id="WelcomeScreen.MoveToGroup" class="com.intellij.openapi.wm.impl.welcomeScreen.MoveProjectToGroupActionGroup"
+             popup="true"/>
+      <action id="WelcomeScreen.EditGroup" class="com.intellij.openapi.wm.impl.welcomeScreen.EditProjectGroupAction"/>
+      <separator/>
+      <action id="WelcomeScreen.ChangeProjectIcon" class="com.intellij.openapi.wm.impl.welcomeScreen.ChangeProjectIconAction"/>
       <separator/>
       <action id="WelcomeScreen.RemoveSelected" class="com.intellij.openapi.wm.impl.welcomeScreen.RemoveSelectedProjectsAction"
               use-shortcut-of="$Delete"/>
@@ -1160,7 +1159,8 @@
         <separator/>
         <action id="DebugMigLayoutAction" internal="true" class="com.intellij.ui.layout.migLayout.DebugMigLayoutAction"/>
         <action id="ShowcaseUiDslAction" internal="true" class="com.intellij.ui.layout.ShowcaseUiDslAction"/>
-        <action id="WebBrowser" class="com.intellij.internal.jcef.WebBrowser"/>
+        <action id="WebBrowser" class="com.intellij.internal.jcef.JBCefBrowserDemo"/>
+        <action id="DefaultBundleIndex" internal="true" class="com.intellij.ide.util.gotoByName.DefaultBundleIndexAction"/>
       </group>
       <group id="TopAnomalies" internal="true" class="com.intellij.internal.anomalies.TopAnomaliesAction" popup="true"/>
       <action id="ImageDuplicates" internal="true" class="com.intellij.internal.ShowImageDuplicatesAction"/>

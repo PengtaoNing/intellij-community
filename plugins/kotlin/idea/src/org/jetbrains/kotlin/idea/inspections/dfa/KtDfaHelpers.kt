@@ -3,6 +3,7 @@ package org.jetbrains.kotlin.idea.inspections.dfa
 
 import com.intellij.codeInsight.Nullability
 import com.intellij.codeInspection.dataFlow.DfaNullability
+import com.intellij.codeInspection.dataFlow.TypeConstraints
 import com.intellij.codeInspection.dataFlow.jvm.SpecialField
 import com.intellij.codeInspection.dataFlow.rangeSet.LongRangeBinOp
 import com.intellij.codeInspection.dataFlow.rangeSet.LongRangeSet
@@ -11,10 +12,11 @@ import com.intellij.codeInspection.dataFlow.types.DfReferenceType
 import com.intellij.codeInspection.dataFlow.types.DfType
 import com.intellij.codeInspection.dataFlow.types.DfTypes
 import com.intellij.codeInspection.dataFlow.value.RelationType
-import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiPrimitiveType
-import com.intellij.psi.PsiType
+import com.intellij.psi.*
 import com.intellij.psi.tree.IElementType
+import org.jetbrains.kotlin.builtins.StandardNames
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
+import org.jetbrains.kotlin.descriptors.TypeAliasDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtConstantExpression
@@ -23,13 +25,15 @@ import org.jetbrains.kotlin.psi.KtOperationReferenceExpression
 import org.jetbrains.kotlin.resolve.constants.*
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
+import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameUnsafe
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.isNullabilityFlexible
 import org.jetbrains.kotlin.types.typeUtil.*
 
 internal fun KotlinType?.toDfType(context: PsiElement) : DfType {
     if (this == null) return DfType.TOP
-    if (isMarkedNullable) {
+    if (canBeNull()) {
         var notNullableType = makeNotNullable().toDfType(context)
         if (notNullableType is DfPrimitiveType) {
             notNullableType = SpecialField.UNBOX.asDfType(notNullableType)
@@ -41,18 +45,38 @@ internal fun KotlinType?.toDfType(context: PsiElement) : DfType {
             notNullableType
         }
     }
-    return when {
-        isBoolean() -> DfTypes.BOOLEAN
-        isByte() -> DfTypes.intRange(LongRangeSet.range(Byte.MIN_VALUE.toLong(), Byte.MAX_VALUE.toLong()))
-        isChar() -> DfTypes.intRange(LongRangeSet.range(Character.MIN_VALUE.toLong(), Character.MAX_VALUE.toLong()))
-        isShort() -> DfTypes.intRange(LongRangeSet.range(Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong()))
-        isInt() -> DfTypes.INT
-        isLong() -> DfTypes.LONG
-        isFloat() -> DfTypes.FLOAT
-        isDouble() -> DfTypes.DOUBLE
-        else -> DfTypes.typedObject(toPsiType(context), Nullability.NOT_NULL)
+    return when (val descriptor = this.constructor.declarationDescriptor) {
+        is TypeAliasDescriptor -> {
+            descriptor.expandedType.toDfType(context)
+        }
+        is ClassDescriptor -> when (val fqNameUnsafe = descriptor.fqNameUnsafe) {
+            StandardNames.FqNames._boolean -> DfTypes.BOOLEAN
+            StandardNames.FqNames._byte -> DfTypes.intRange(LongRangeSet.range(Byte.MIN_VALUE.toLong(), Byte.MAX_VALUE.toLong()))
+            StandardNames.FqNames._char -> DfTypes.intRange(LongRangeSet.range(Character.MIN_VALUE.toLong(), Character.MAX_VALUE.toLong()))
+            StandardNames.FqNames._short -> DfTypes.intRange(LongRangeSet.range(Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong()))
+            StandardNames.FqNames._int -> DfTypes.INT
+            StandardNames.FqNames._long -> DfTypes.LONG
+            StandardNames.FqNames._float -> DfTypes.FLOAT
+            StandardNames.FqNames._double -> DfTypes.DOUBLE
+            StandardNames.FqNames.any -> DfTypes.NOT_NULL_OBJECT
+            else -> {
+                val typeFqName = when(fqNameUnsafe) {
+                    StandardNames.FqNames.string -> CommonClassNames.JAVA_LANG_STRING
+                    else -> fqNameUnsafe.asString()
+                }
+                val psiClass = JavaPsiFacade.getInstance(context.project).findClass(typeFqName, context.resolveScope)
+                if (psiClass != null) {
+                    return TypeConstraints.exactClass(psiClass).instanceOf().asDfType().meet(DfTypes.NOT_NULL_OBJECT)
+                }
+                DfType.TOP
+            }
+        }
+        // TODO: Support type parameters
+        else -> DfType.TOP
     }
 }
+
+internal fun KotlinType.canBeNull() = isMarkedNullable || isNullabilityFlexible()
 
 internal fun getConstant(expr: KtConstantExpression): DfType {
     val bindingContext = expr.analyze(BodyResolveMode.PARTIAL)
@@ -77,7 +101,7 @@ internal fun KtExpression.getKotlinType(): KotlinType? = analyze(BodyResolveMode
 
 internal fun KotlinType.toPsiType(context: PsiElement): PsiType? {
     val typeFqName = this.constructor.declarationDescriptor?.fqNameSafe?.asString()
-    val boxed = isMarkedNullable
+    val boxed = canBeNull()
     fun PsiPrimitiveType.orBoxed() = if (boxed) getBoxedType(context) else this
     return when (typeFqName) {
         "kotlin.Int" -> PsiType.INT.orBoxed()

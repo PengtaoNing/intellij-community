@@ -15,6 +15,7 @@ import com.intellij.openapi.vfs.impl.ArchiveHandler;
 import com.intellij.openapi.vfs.newvfs.events.*;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualDirectoryImpl;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl;
+import com.intellij.util.ArrayUtil;
 import com.intellij.util.Function;
 import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
@@ -166,20 +167,21 @@ public final class VfsImplUtil {
    * <p>
    * Likely you need this method if you have following code:
    *
-   * <code>
+   * <code><pre>
    * FileDocumentManager.getInstance().saveDocument(document);
    * runExternalToolToChangeFile(virtualFile.getPath()) // changes file externally in milliseconds, probably without changing file's length
-   * VfsUtil.markDirtyAndRefresh(true, true, true, virtualFile); // might be replaced with {@link #forceSyncRefresh(VirtualFile)}
-   * </code>
+   * VfsUtil.markDirtyAndRefresh(true, true, true, virtualFile); // might be replaced with forceSyncRefresh(virtualFile);
+   * </pre></code>
    */
   public static void forceSyncRefresh(@NotNull VirtualFile file) {
-    RefreshQueue.getInstance().processSingleEvent(false, new VFileContentChangeEvent(null, file, file.getModificationStamp(), -1, true));
+    VFileContentChangeEvent event = new VFileContentChangeEvent(null, file, file.getModificationStamp(), -1, true);
+    RefreshQueue.getInstance().processSingleEvent(false, event);
   }
 
   private static final AtomicBoolean ourSubscribed = new AtomicBoolean(false);
   private static final Object ourLock = new Object();
   private static final Map<String, Pair<ArchiveFileSystem, ArchiveHandler>> ourHandlerCache = CollectionFactory.createFilePathMap(); // guarded by ourLock
-  private static final Map<String, Set<String>> ourDominatorsMap = CollectionFactory.createFilePathMap(); // guarded by ourLock
+  private static final Map<String, Set<String>> ourDominatorsMap = CollectionFactory.createFilePathMap(); // guarded by ourLock; its Set<String> is guarded by ourLock too
 
   @NotNull
   public static <T extends ArchiveHandler> T getHandler(@NotNull ArchiveFileSystem vfs,
@@ -362,6 +364,7 @@ public final class VfsImplUtil {
    * should generate {@link VFileDeleteEvent}('file://x.jar').</p>
    * (The latter might happen when someone explicitly called {@code fileInsideJar.refresh()} without refreshing jar file in local file system).
    */
+  @NotNull
   public static List<VFileEvent> getJarInvalidationEvents(@NotNull VFileEvent event, @NotNull List<? super Runnable> outApplyActions) {
     if (!(event instanceof VFileDeleteEvent ||
           event instanceof VFileMoveEvent ||
@@ -390,14 +393,17 @@ public final class VfsImplUtil {
       local = ((ArchiveFileSystem)entryFileSystem).getLocalByEntry(file);
       path = local == null ? ((ArchiveFileSystem)entryFileSystem).extractLocalPath(path) : local.getPath();
     }
-    Collection<String> jarPaths;
+    String[] jarPaths;
     synchronized (ourLock) {
-      jarPaths = ourDominatorsMap.get(path);
+      Set<String> handlers = ourDominatorsMap.get(path);
+      if (handlers == null) {
+        jarPaths = new String[] {path};
+      }
+      else {
+        jarPaths = ArrayUtil.toStringArray(handlers);
+      }
     }
-    if (jarPaths == null) {
-      jarPaths = Collections.singletonList(path);
-    }
-    List<VFileEvent> events = new ArrayList<>(jarPaths.size());
+    List<VFileEvent> events = new ArrayList<>(jarPaths.length);
     for (String jarPath : jarPaths) {
       Pair<ArchiveFileSystem, ArchiveHandler> handlerPair = ourHandlerCache.get(jarPath);
       if (handlerPair == null) {

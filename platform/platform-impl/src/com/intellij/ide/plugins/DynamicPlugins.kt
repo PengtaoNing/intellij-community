@@ -132,9 +132,12 @@ object DynamicPlugins {
     descriptors: Collection<IdeaPluginDescriptor>,
     project: Project? = null,
     parentComponent: JComponent? = null,
-    options: UnloadPluginOptions = UnloadPluginOptions().withDisable(true),
-  ): Boolean = updateDescriptorsWithoutRestart(descriptors, load = false) {
-    unloadPluginWithProgress(project, parentComponent, it, options)
+    options: UnloadPluginOptions? = null,
+  ): Boolean {
+    val nonNullOptions = options ?: UnloadPluginOptions().withDisable(true)
+    return updateDescriptorsWithoutRestart(descriptors, load = false) {
+      unloadPluginWithProgress(project, parentComponent, it, nonNullOptions)
+    }
   }
 
   private fun updateDescriptorsWithoutRestart(
@@ -281,7 +284,7 @@ object DynamicPlugins {
     var dependencyMessage: String? = null
     processOptionalDependenciesOnPlugin(descriptor, pluginSet, isLoaded = true) { mainDescriptor, subDescriptor ->
       if (subDescriptor.packagePrefix == null
-          || !ClassLoaderConfigurator.isMigratedToNewModel(mainDescriptor.pluginId)) {
+          || mainDescriptor.pluginId.idString == "org.jetbrains.kotlin" || mainDescriptor.pluginId == PluginManagerCore.JAVA_PLUGIN_ID) {
         dependencyMessage = "Plugin ${subDescriptor.pluginId} that optionally depends on ${descriptor.pluginId} does not have a separate classloader for the dependency"
         return@processOptionalDependenciesOnPlugin false
       }
@@ -430,7 +433,7 @@ object DynamicPlugins {
     }
   }
 
-  @JvmStatic
+  @JvmOverloads
   fun unloadPlugin(pluginDescriptor: IdeaPluginDescriptorImpl, options: UnloadPluginOptions = UnloadPluginOptions()): Boolean {
     val app = ApplicationManager.getApplication() as ApplicationImpl
     val pluginId = pluginDescriptor.pluginId
@@ -804,9 +807,7 @@ object DynamicPlugins {
     return loadPlugin(pluginDescriptor, checkImplementationDetailDependencies = true)
   }
 
-  fun loadPlugin(pluginDescriptor: IdeaPluginDescriptorImpl,
-                 checkImplementationDetailDependencies: Boolean = true,
-                 classLoaderForTest: ClassLoader? = null): Boolean {
+  fun loadPlugin(pluginDescriptor: IdeaPluginDescriptorImpl, checkImplementationDetailDependencies: Boolean = true): Boolean {
     if (classloadersFromUnloadedPlugins[pluginDescriptor.pluginId] != null) {
       LOG.info("Requiring restart for loading plugin ${pluginDescriptor.pluginId}" +
                " because previous version of the plugin wasn't fully unloaded")
@@ -817,7 +818,7 @@ object DynamicPlugins {
     val app = ApplicationManager.getApplication() as ApplicationImpl
     val pluginSet = PluginManagerCore.getPluginSet().concat(pluginDescriptor)
     val classLoaderConfigurator = ClassLoaderConfigurator(pluginSet)
-    classLoaderConfigurator.configure(pluginDescriptor, classLoaderForTest)
+    classLoaderConfigurator.configure(pluginDescriptor)
 
     app.messageBus.syncPublisher(DynamicPluginListener.TOPIC).beforePluginLoaded(pluginDescriptor)
     app.runWriteAction {
@@ -1104,7 +1105,7 @@ private fun processOptionalDependenciesOnPlugin(dependencyPlugin: IdeaPluginDesc
     wantedIds.add(module.name)
   }
 
-  for (plugin in pluginSet.loadedPlugins) {
+  for (plugin in pluginSet.enabledPlugins) {
     if (!processOptionalDependenciesInOldFormatOnPlugin(dependencyPlugin.id, plugin, isLoaded, processor)) {
       return
     }
@@ -1271,8 +1272,8 @@ private fun findLoadedPluginExtensionPointRecursive(pluginDescriptor: IdeaPlugin
     }
   }
 
-  processDirectDependencies(pluginDescriptor, pluginSet) {
-    findLoadedPluginExtensionPointRecursive(it, epName, pluginSet, context, seenPlugins)?.let { return it.first to true }
+  processDirectDependencies(pluginDescriptor, pluginSet) { dependency ->
+    findLoadedPluginExtensionPointRecursive(dependency, epName, pluginSet, context, seenPlugins)?.let { return it.first to true }
   }
   return null
 }

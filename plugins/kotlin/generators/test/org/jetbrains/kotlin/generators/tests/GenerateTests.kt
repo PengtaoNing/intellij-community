@@ -76,6 +76,7 @@ import org.jetbrains.kotlin.idea.imports.AbstractJvmOptimizeImportsTest
 import org.jetbrains.kotlin.idea.index.AbstractKotlinTypeAliasByExpansionShortNameIndexTest
 import org.jetbrains.kotlin.idea.inspections.AbstractLocalInspectionTest
 import org.jetbrains.kotlin.idea.inspections.AbstractMultiFileLocalInspectionTest
+import org.jetbrains.kotlin.idea.inspections.AbstractViewOfflineInspectionTest
 import org.jetbrains.kotlin.idea.intentions.AbstractConcatenatedStringGeneratorTest
 import org.jetbrains.kotlin.idea.intentions.AbstractIntentionTest
 import org.jetbrains.kotlin.idea.intentions.AbstractIntentionTest2
@@ -196,13 +197,23 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         }
 
         testClass<AbstractKotlinEvaluateExpressionTest> {
-            model("evaluation/singleBreakpoint", testMethodName = "doSingleBreakpointTest")
-            model("evaluation/multipleBreakpoints", testMethodName = "doMultipleBreakpointsTest")
+            model("evaluation/singleBreakpoint", testMethodName = "doSingleBreakpointTest", targetBackend = TargetBackend.JVM_WITH_OLD_EVALUATOR)
+            model("evaluation/multipleBreakpoints", testMethodName = "doMultipleBreakpointsTest", targetBackend = TargetBackend.JVM_WITH_OLD_EVALUATOR)
         }
 
         testClass<AbstractIrKotlinEvaluateExpressionTest> {
-            model("evaluation/singleBreakpoint", testMethodName = "doSingleBreakpointTest", targetBackend = TargetBackend.JVM_IR)
-            model("evaluation/multipleBreakpoints", testMethodName = "doMultipleBreakpointsTest", targetBackend = TargetBackend.JVM_IR)
+            model("evaluation/singleBreakpoint", testMethodName = "doSingleBreakpointTest", targetBackend = TargetBackend.JVM_IR_WITH_OLD_EVALUATOR)
+            model("evaluation/multipleBreakpoints", testMethodName = "doMultipleBreakpointsTest", targetBackend = TargetBackend.JVM_IR_WITH_OLD_EVALUATOR)
+        }
+
+        testClass<AbstractKotlinEvaluateExpressionWithIRFragmentCompilerTest> {
+            model("evaluation/singleBreakpoint", testMethodName = "doSingleBreakpointTest", targetBackend = TargetBackend.JVM_WITH_IR_EVALUATOR)
+            model("evaluation/multipleBreakpoints", testMethodName = "doMultipleBreakpointsTest", targetBackend = TargetBackend.JVM_WITH_IR_EVALUATOR)
+        }
+
+        testClass<AbstractIrKotlinEvaluateExpressionWithIRFragmentCompilerTest> {
+            model("evaluation/singleBreakpoint", testMethodName = "doSingleBreakpointTest", targetBackend = TargetBackend.JVM_IR_WITH_IR_EVALUATOR)
+            model("evaluation/multipleBreakpoints", testMethodName = "doMultipleBreakpointsTest", targetBackend = TargetBackend.JVM_IR_WITH_IR_EVALUATOR)
         }
 
         testClass<AbstractSelectExpressionForDebuggerTest> {
@@ -452,6 +463,10 @@ private fun assembleWorkspace(): TWorkspace = workspace {
 
         testClass<AbstractLocalInspectionTest> {
             model("inspectionsLocal", pattern = "^([\\w\\-_]+)\\.(kt|kts)$".toRegex())
+        }
+
+        testClass<AbstractViewOfflineInspectionTest> {
+            model("inspectionsLocal", pattern = "^([\\w\\-_]+)_report\\.(xml)$".toRegex())
         }
 
         testClass<AbstractHierarchyTest> {
@@ -1109,7 +1124,7 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         }
     }
 
-    testGroup("maven") {
+    testGroup("maven/tests") {
         testClass<AbstractMavenConfigureProjectByChangingFileTest> {
             model("configurator/jvm", pattern = DIRECTORY, isRecursive = false, testMethodName = "doTestWithMaven")
             model("configurator/js", pattern = DIRECTORY, isRecursive = false, testMethodName = "doTestWithJSMaven")
@@ -1162,7 +1177,7 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         }
     }
 
-    testGroup("compiler-plugins/parcelize") {
+    testGroup("compiler-plugins/parcelize/tests") {
         testClass<AbstractParcelizeQuickFixTest> {
             model("quickfix", pattern = "^([\\w\\-_]+)\\.kt$".toRegex())
         }
@@ -1332,7 +1347,7 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         }
     }
 
-    testGroup("jps/jps-plugin") {
+    testGroup("jps/jps-plugin/tests") {
         testClass<AbstractIncrementalJvmJpsTest> {
             model("incremental/multiModule/common", pattern = DIRECTORY)
             model("incremental/multiModule/jvm", pattern = DIRECTORY)
@@ -1379,9 +1394,7 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         testClass<AbstractDataContainerVersionChangedTest> {
             model("incremental/cacheVersionChanged", pattern = DIRECTORY)
         }
-    }
 
-    testGroup("jps/jps-plugin") {
         fun MutableTSuite.commonProtoComparisonTests() {
             model("comparison/classSignatureChange", pattern = DIRECTORY)
             model("comparison/classPrivateOnlyChange", pattern = DIRECTORY)

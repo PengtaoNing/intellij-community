@@ -31,7 +31,7 @@ public interface TextContent extends CharSequence {
 
   /**
    * Translate an offset in this text into a corresponding offset in the PSI.
-   * In case of ambiguities, a heuristic is applied, preferring PSI offsets near non-whitespace characters.
+   * In the case of ambiguities, a heuristic is applied, preferring PSI offsets near non-whitespace characters.
    */
   int textOffsetToFile(int textOffset);
 
@@ -53,6 +53,13 @@ public interface TextContent extends CharSequence {
    * @return the range with start and end translated using {@link #fileOffsetToText}.
    */
   @Nullable TextRange fileRangeToText(TextRange fileRange);
+
+  /**
+   * @return the range with start and end translated using {@link #textOffsetToFile(int)}.
+   */
+  default @NotNull TextRange textRangeToFile(TextRange textRange) {
+    return new TextRange(textOffsetToFile(textRange.getStartOffset()), textOffsetToFile(textRange.getEndOffset()));
+  }
 
   /**
    * @return the PSI element containing all of this content's fragments.
@@ -77,7 +84,7 @@ public interface TextContent extends CharSequence {
 
   /**
    * @return a copy of this TextContent with the given range excluded.
-   * Note: the range is taken contain natural language text offsets, not PSI ones.
+   * Note: the range contains natural language text offsets, not PSI ones.
    * So if you need to exclude several ranges, you should shift them after preceding ones are processed,
    * or exclude them in last-to-first order.
    */
@@ -86,8 +93,8 @@ public interface TextContent extends CharSequence {
 
   /**
    * The same as {@link #excludeRange} with additional semantics that the range isn't just removed silently,
-   * but it's assumed that it's replaced with some unknown content,
-   * so the text around that range will probably be malformed, and error reporting there might need suppressing.
+   * but it's assumed that it's replaced with some unknown content.
+   * So the text around that range will probably be malformed, and error reporting there might need suppressing.
    */
   @Contract(pure = true)
   TextContent markUnknown(TextRange rangeInText);
@@ -140,7 +147,7 @@ public interface TextContent extends CharSequence {
   /**
    * @return a concatenation of several text contents, which must have the same domains.
    */
-  static TextContent join(List<? extends TextContent> components) {
+  static TextContent join(List<? extends @NotNull TextContent> components) {
     if (components.size() == 1) return components.get(0);
 
     return new TextContentImpl(commonDomain(components), ContainerUtil.flatMap(components, c -> ((TextContentImpl) c).tokens));
@@ -151,7 +158,7 @@ public interface TextContent extends CharSequence {
    * with a single synthetic space character inserted between each pair of adjacent components.
    */
   @Nullable
-  static TextContent joinWithWhitespace(List<TextContent> components) {
+  static TextContent joinWithWhitespace(List<? extends @NotNull TextContent> components) {
     if (components.isEmpty()) return null;
     if (components.size() == 1) return components.get(0);
 

@@ -1,3 +1,4 @@
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.starters.shared;
 
 import com.intellij.ide.starters.JavaStartersBundle;
@@ -65,7 +66,7 @@ public final class ValidationFunctions {
 
   // This validation describes the most common and important rules for all Web Starters implementations
   public static final TextValidationFunction CHECK_GROUP_FORMAT = new TextValidationFunction() {
-    private final Pattern myPatternForEntireText = Pattern.compile("[a-zA-Z\\d_.]*");
+    private final Pattern myPatternForEntireText = Pattern.compile("[a-zA-Z\\d_.-]*");
     private final Pattern myPatternForOneWord = Pattern.compile("[a-zA-Z_].*");
 
     @Override
@@ -87,8 +88,7 @@ public final class ValidationFunctions {
       String[] wordsBetweenDots = fieldText.split("\\.");
       for (String word : wordsBetweenDots) {
         if (!myPatternForOneWord.matcher(word).matches()) {
-          return JavaStartersBundle
-            .message("message.part.is.incorrect.and.must.start.with.latin.character.or.some.other.symbols", word);
+          return JavaStartersBundle.message("message.part.is.incorrect.and.must.start.with.latin.character.or.some.other.symbols", word);
         }
       }
 

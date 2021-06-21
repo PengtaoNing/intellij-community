@@ -24,8 +24,8 @@ import org.jetbrains.kotlin.idea.core.script.KotlinScriptDependenciesClassFinder
 import org.jetbrains.kotlin.idea.core.script.ScriptDependenciesModificationTracker
 import org.jetbrains.kotlin.idea.core.script.configuration.CompositeScriptConfigurationManager
 import org.jetbrains.kotlin.idea.core.script.scriptingDebugLog
+import org.jetbrains.kotlin.idea.core.util.CheckCanceledLock
 import org.jetbrains.kotlin.idea.core.util.EDT
-import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.psi.KtFile
 import java.util.concurrent.atomic.AtomicInteger
@@ -52,6 +52,7 @@ abstract class ScriptClassRootsUpdater(
     private var invalidated: Boolean = false
     private var syncUpdateRequired: Boolean = false
     private val concurrentUpdates = AtomicInteger()
+    private val lock = CheckCanceledLock()
 
     abstract fun gatherRoots(builder: ScriptClassRootsBuilder)
 
@@ -64,7 +65,7 @@ abstract class ScriptClassRootsUpdater(
     }
 
     /**
-     * Wee need CAS due to concurrent unblocking sync update in [checkInvalidSdks]
+     * We need CAS due to concurrent unblocking sync update in [checkInvalidSdks]
      */
     private val cache: AtomicReference<ScriptClassRootsCache> = AtomicReference(ScriptClassRootsCache.EMPTY)
 
@@ -78,22 +79,24 @@ abstract class ScriptClassRootsUpdater(
     /**
      * @param synchronous Used from legacy FS cache only, don't use
      */
-    @Synchronized
     @Suppress("UNUSED_PARAMETER")
     fun invalidate(file: VirtualFile, synchronous: Boolean = false) {
-        // todo: record invalided files for some optimisations in update
-        invalidate(synchronous)
+        lock.withLock {
+            // todo: record invalided files for some optimisations in update
+            invalidate(synchronous)
+        }
     }
 
     /**
      * @param synchronous Used from legacy FS cache only, don't use
      */
-    @Synchronized
     fun invalidate(synchronous: Boolean = false) {
-        checkInTransaction()
-        invalidated = true
-        if (synchronous) {
-            syncUpdateRequired = true
+        lock.withLock {
+            checkInTransaction()
+            invalidated = true
+            if (synchronous) {
+                syncUpdateRequired = true
+            }
         }
     }
 
@@ -126,36 +129,39 @@ abstract class ScriptClassRootsUpdater(
         scheduleUpdateIfInvalid()
     }
 
-    @Synchronized
     private fun scheduleUpdateIfInvalid() {
-        if (!invalidated) return
-        invalidated = false
+        lock.withLock {
+            if (!invalidated) return
+            invalidated = false
 
-        if (syncUpdateRequired || ApplicationManager.getApplication().isUnitTestMode) {
-            syncUpdateRequired = false
-            updateSynchronously()
-        } else {
-            ensureUpdateScheduled()
+            if (syncUpdateRequired || ApplicationManager.getApplication().isUnitTestMode) {
+                syncUpdateRequired = false
+                updateSynchronously()
+            } else {
+                ensureUpdateScheduled()
+            }
         }
     }
 
     private var scheduledUpdate: ProgressIndicator? = null
 
-    @Synchronized
     private fun ensureUpdateScheduled() {
-        scheduledUpdate?.cancel()
-        val disposable = KotlinPluginDisposable.getInstance(project)
-        if (!Disposer.isDisposed(disposable)) {
-            scheduledUpdate = BackgroundTaskUtil.executeOnPooledThread(disposable) {
-                doUpdate()
+        lock.withLock {
+            scheduledUpdate?.cancel()
+            val disposable = KotlinPluginDisposable.getInstance(project)
+            if (!Disposer.isDisposed(disposable)) {
+                scheduledUpdate = BackgroundTaskUtil.executeOnPooledThread(disposable) {
+                    doUpdate()
+                }
             }
         }
     }
 
-    @Synchronized
     private fun updateSynchronously() {
-        scheduledUpdate?.cancel()
-        doUpdate(false)
+        lock.withLock {
+            scheduledUpdate?.cancel()
+            doUpdate(false)
+        }
     }
 
     private fun doUpdate(underProgressManager: Boolean = true) {
@@ -189,9 +195,7 @@ abstract class ScriptClassRootsUpdater(
             ScriptCacheDependencies(scriptClassRootsCache).save(project)
             lastSeen = scriptClassRootsCache
         } finally {
-            synchronized(this) {
-                scheduledUpdate = null
-            }
+            scheduledUpdate = null
         }
     }
 

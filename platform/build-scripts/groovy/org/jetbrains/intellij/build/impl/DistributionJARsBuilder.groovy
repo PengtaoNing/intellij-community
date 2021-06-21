@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.Pair
@@ -270,7 +270,7 @@ final class DistributionJARsBuilder {
                                              buildContext.paths.tempDir.resolve("searchableOptions"),
                                              modulesToIndex, List.of("traverseUI", targetDirectory.toString(), "true"),
                                              Collections.emptyMap(),
-                                             List.of("-ea", "-Xmx1024m"))
+                                             List.of("-ea", "-Xmx1024m", "-Djava.system.class.loader=com.intellij.util.lang.PathClassLoader"))
         String[] modules = targetDirectory.toFile().list()
         if (modules == null || modules.length == 0) {
           buildContext.messages.error("Failed to build searchable options index: $targetDirectory is empty")
@@ -283,17 +283,21 @@ final class DistributionJARsBuilder {
     })
   }
 
-  static List<String> getModulesToCompile(BuildContext buildContext) {
-    def productLayout = buildContext.productProperties.productLayout
-    def modulesToInclude = productLayout.getIncludedPluginModules(productLayout.bundledPluginModules as Set<String>) +
-                           PlatformModules.PLATFORM_API_MODULES +
-                           PlatformModules.PLATFORM_IMPLEMENTATION_MODULES +
-                           productLayout.productApiModules +
-                           productLayout.productImplementationModules +
-                           productLayout.additionalPlatformJars.values() +
-                           toolModules + buildContext.productProperties.additionalModulesToCompile +
-                           ["intellij.idea.community.build.tasks", "intellij.platform.images.build"]
-    modulesToInclude - productLayout.excludedModuleNames
+  static Set<String> getModulesToCompile(BuildContext buildContext) {
+    ProductModulesLayout productLayout = buildContext.productProperties.productLayout
+    Set<String> modulesToInclude = new LinkedHashSet<>()
+    modulesToInclude.addAll(productLayout.getIncludedPluginModules(Set.copyOf(productLayout.bundledPluginModules)))
+    modulesToInclude.addAll(PlatformModules.PLATFORM_API_MODULES)
+    modulesToInclude.addAll(PlatformModules.PLATFORM_IMPLEMENTATION_MODULES)
+    modulesToInclude.addAll(productLayout.productApiModules)
+    modulesToInclude.addAll(productLayout.productImplementationModules)
+    modulesToInclude.addAll(productLayout.additionalPlatformJars.values())
+    modulesToInclude.addAll(toolModules)
+    modulesToInclude.addAll(buildContext.productProperties.additionalModulesToCompile)
+    modulesToInclude.add("intellij.idea.community.build.tasks")
+    modulesToInclude.add("intellij.platform.images.build")
+    modulesToInclude.removeAll(productLayout.excludedModuleNames)
+    return modulesToInclude
   }
 
   List<String> getModulesForPluginsToPublish() {
@@ -389,7 +393,7 @@ final class DistributionJARsBuilder {
     return moduleToJar
   }
 
-  private void buildLib() {
+  void buildLib() {
     LayoutBuilder layoutBuilder = createLayoutBuilder()
     ProductModulesLayout productLayout = buildContext.productProperties.productLayout
 
@@ -447,13 +451,17 @@ final class DistributionJARsBuilder {
                   Collections.<Pair<File, String>>emptyList())
   }
 
-  private void buildBundledPlugins() {
-    def layoutBuilder = createLayoutBuilder()
+  void buildBundledPlugins() {
     def allPlugins = getPluginsByModules(buildContext, buildContext.productProperties.productLayout.bundledPluginModules)
+    buildBundledPlugins(allPlugins)
+  }
+
+  void buildBundledPlugins(List<PluginLayout> plugins) {
+    def layoutBuilder = createLayoutBuilder()
     def pluginDirectoriesToSkip = buildContext.options.bundledPluginDirectoriesToSkip as Set<String>
     buildContext.messages.debug("Plugin directories to skip: " + pluginDirectoriesToSkip)
     buildContext.messages.block("Build bundled plugins") {
-      def pluginsToBundle = allPlugins.findAll {
+      def pluginsToBundle = plugins.findAll {
         satisfiesBundlingRequirements(it, null) && !pluginDirectoriesToSkip.contains(it.directoryName)
       }
       buildPlugins(layoutBuilder, pluginsToBundle, buildContext.paths.distAllDir.resolve(PLUGINS_DIRECTORY), projectStructureMapping)
@@ -651,7 +659,7 @@ final class DistributionJARsBuilder {
       @Override
       Object get() {
         buildPlugins(layoutBuilder, List.of(helpPlugin), pluginsToPublishDir, null)
-        BuildHelper.zip(buildContext, destFile, List.of(pluginsToPublishDir.resolve(directory)), directory)
+        BuildHelper.zipWithPrefix(buildContext, destFile, List.of(pluginsToPublishDir.resolve(directory)), directory)
         return null
       }
     })
