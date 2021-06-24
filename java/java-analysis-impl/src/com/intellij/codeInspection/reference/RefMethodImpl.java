@@ -228,7 +228,13 @@ public class RefMethodImpl extends RefJavaElementImpl implements RefMethod {
 
   @Override
   public boolean hasBody() {
-    return !isAbstract() && !getOwnerClass().isInterface() || !isBodyEmpty();
+    if (!isAbstract()) {
+      RefClass ownerClass = getOwnerClass();
+      if (ownerClass != null && !ownerClass.isInterface()) {
+        return true;
+      }
+    }
+    return !isBodyEmpty();
   }
 
   private void initializeSuperMethods(PsiMethod method) {
@@ -449,7 +455,11 @@ public class RefMethodImpl extends RefJavaElementImpl implements RefMethod {
 
   @Nullable
   static RefMethod methodFromExternalName(RefManager manager, String externalName) {
-    return (RefMethod) manager.getReference(findPsiMethod(PsiManager.getInstance(manager.getProject()), externalName));
+    PsiElement method = findPsiMethod(PsiManager.getInstance(manager.getProject()), externalName);
+    if (method instanceof LightElement) {
+      method = method.getNavigationElement();
+    }
+    return (RefMethod) manager.getReference(method);
   }
 
   @Nullable

@@ -218,9 +218,24 @@ public class PostfixTemplateProviderTestGenerated extends AbstractPostfixTemplat
         runTest("testData/codeInsight/postfix/whenExpression.kt");
     }
 
+    @TestMetadata("whenForEnumClass.kt")
+    public void testWhenForEnumClass() throws Exception {
+        runTest("testData/codeInsight/postfix/whenForEnumClass.kt");
+    }
+
+    @TestMetadata("whenForSealedClass.kt")
+    public void testWhenForSealedClass() throws Exception {
+        runTest("testData/codeInsight/postfix/whenForSealedClass.kt");
+    }
+
     @TestMetadata("while.kt")
     public void testWhile() throws Exception {
         runTest("testData/codeInsight/postfix/while.kt");
+    }
+
+    @TestMetadata("with.kt")
+    public void testWith() throws Exception {
+        runTest("testData/codeInsight/postfix/with.kt");
     }
 
     @RunWith(JUnit3RunnerWithInners.class)

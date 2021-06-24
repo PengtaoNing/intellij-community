@@ -12,6 +12,7 @@ import com.intellij.codeInspection.dataFlow.memory.DfaMemoryState
 import com.intellij.codeInspection.dataFlow.types.DfTypes
 import com.intellij.codeInspection.dataFlow.value.DfaValue
 import com.intellij.codeInspection.dataFlow.value.DfaValueFactory
+import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.inspections.AbstractKotlinInspection
@@ -53,8 +54,13 @@ class KotlinConstantConditionsInspection : AbstractKotlinInspection() {
     }
 
     private fun shouldSuppress(expression: KtExpression): Boolean {
-        if (expression is KtConstantExpression || expression is KtProperty ||
-            expression is KtBinaryExpression && expression.operationToken == KtTokens.EQ
+        if (expression is KtConstantExpression ||
+            // If result of initialization is constant, then the initializer will be reported
+            expression is KtProperty ||
+            // If result of assignment is constant, then the right-hand part will be reported
+            expression is KtBinaryExpression && expression.operationToken == KtTokens.EQ ||
+            // Negation operand: negation itself will be reported
+            (expression.parent as? KtPrefixExpression)?.operationToken == KtTokens.EXCL
         ) {
             return true
         }
@@ -65,7 +71,11 @@ class KotlinConstantConditionsInspection : AbstractKotlinInspection() {
                 return true
             }
         }
-        val context = expression.analyze(BodyResolveMode.PARTIAL_WITH_CFA)
+        val context = expression.analyze(BodyResolveMode.FULL)
+        if (context.diagnostics.forElement(expression)
+            .any { it.factory == Errors.SENSELESS_COMPARISON || it.factory == Errors.USELESS_IS_CHECK }) {
+            return true
+        }
         return expression.isUsedAsStatement(context)
     }
 

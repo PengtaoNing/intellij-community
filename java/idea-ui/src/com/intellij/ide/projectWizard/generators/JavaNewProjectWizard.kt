@@ -6,11 +6,16 @@ import com.intellij.ide.LabelAndComponent
 import com.intellij.ide.NewProjectWizard
 import com.intellij.ide.util.projectWizard.WizardContext
 import com.intellij.ide.wizard.BuildSystemWithSettings
+import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.observable.properties.GraphProperty
 import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
 import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.projectRoots.JavaSdkType
+import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.ui.configuration.JdkComboBox
 import com.intellij.openapi.roots.ui.configuration.projectRoot.ProjectSdksModel
 import com.intellij.ui.components.JBLabel
@@ -36,10 +41,17 @@ class JavaNewProjectWizard : NewProjectWizard<JavaSettings> {
       settings.buildSystemProperty.get().advancedSettings().apply { isVisible = true }
     }
 
-    val sdkCombo = JdkComboBox(null, ProjectSdksModel(), null, null, null, null)
+    val sdkModel = ProjectSdksModel()
+    val sdkCombo = JdkComboBox(null, sdkModel, { it is JavaSdkType }, null, null, null)
       .apply { minimumSize = Dimension(0, 0) }
-      .also { combo -> combo.addItemListener(ItemListener { settings.sdk = combo.selectedJdk }) }
-
+      .also { combo ->
+        combo.addItemListener(ItemListener { settings.sdk = combo.selectedJdk })
+        val sdk = ProjectRootManager.getInstance(ProjectManager.getInstance().defaultProject).projectSdk
+        if (sdk != null && sdk.sdkType is JavaSdkType) {
+          sdkModel.addSdk(sdk)
+          combo.selectedJdk = sdk
+        }
+      }
     settings.buildSystemProperty.set(settings.buildSystemButtons.value.first())
 
     return listOf(
@@ -50,6 +62,14 @@ class JavaNewProjectWizard : NewProjectWizard<JavaSettings> {
 
   override fun setupProject(project: Project, settings: JavaSettings, context: WizardContext) {
     settings.buildSystemProperty.get().setupProject(project, settings)
+
+    settings.sdk?.let { sdk ->
+      val table = ProjectJdkTable.getInstance()
+      runWriteAction {
+        if (table.findJdk(sdk.name) == null) table.addJdk(sdk)
+        ProjectRootManager.getInstance(project).projectSdk = sdk
+      }
+    }
   }
 }
 

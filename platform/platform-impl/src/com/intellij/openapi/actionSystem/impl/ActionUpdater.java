@@ -1,16 +1,14 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem.impl;
 
+import com.intellij.codeWithMe.ClientId;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ProhibitAWTEvents;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction;
-import com.intellij.openapi.application.AccessToken;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.components.ComponentManager;
@@ -281,18 +279,21 @@ final class ActionUpdater {
       });
     };
     ourPromises.add(promise);
+    ClientId clientId = ClientId.getCurrent();
     ourExecutor.execute(() -> {
       boolean[] success = {false};
       try {
-        ApplicationEx applicationEx = ApplicationManagerEx.getApplicationEx();
-        BackgroundTaskUtil.runUnderDisposeAwareIndicator(disposableParent, () ->
-          success[0] = ProgressIndicatorUtils.runActionAndCancelBeforeWrite(
-            applicationEx,
-            () -> cancelPromise(promise, "write-action requested"),
-            () -> applicationEx.tryRunReadAction(runnable)), indicator);
-        if (!success[0] && !promise.isDone()) {
-          cancelPromise(promise, "read-action unavailable");
-        }
+        ClientId.withClientId(clientId, () -> {
+          ApplicationEx applicationEx = ApplicationManagerEx.getApplicationEx();
+          BackgroundTaskUtil.runUnderDisposeAwareIndicator(disposableParent, () ->
+            success[0] = ProgressIndicatorUtils.runActionAndCancelBeforeWrite(
+              applicationEx,
+              () -> cancelPromise(promise, "write-action requested"),
+              () -> applicationEx.tryRunReadAction(runnable)), indicator);
+          if (!success[0] && !promise.isDone()) {
+            cancelPromise(promise, "read-action unavailable");
+          }
+        });
       }
       catch (Throwable e) {
         if (!promise.isDone()) {
@@ -392,6 +393,10 @@ final class ActionUpdater {
   }
 
   private List<AnAction> expandGroupChild(AnAction child, boolean hideDisabled, UpdateStrategy strategy) {
+    Application application = ApplicationManager.getApplication();
+    if (application == null || application.isDisposed()) {
+      return Collections.emptyList();
+    }
     Presentation presentation = update(child, strategy);
     if (presentation == null) {
       return Collections.emptyList();

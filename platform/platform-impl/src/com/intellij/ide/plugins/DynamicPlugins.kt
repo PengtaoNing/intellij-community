@@ -116,7 +116,6 @@ object DynamicPlugins {
   /**
    * @return true if the requested enabled state was applied without restart, false if restart is required
    */
-  @JvmStatic
   fun loadPlugins(descriptors: Collection<IdeaPluginDescriptor>): Boolean {
     return updateDescriptorsWithoutRestart(descriptors, load = true) {
       loadPlugin(it, checkImplementationDetailDependencies = true)
@@ -126,17 +125,15 @@ object DynamicPlugins {
   /**
    * @return true if the requested enabled state was applied without restart, false if restart is required
    */
-  @JvmStatic
   @JvmOverloads
   fun unloadPlugins(
     descriptors: Collection<IdeaPluginDescriptor>,
     project: Project? = null,
     parentComponent: JComponent? = null,
-    options: UnloadPluginOptions? = null,
+    options: UnloadPluginOptions = UnloadPluginOptions(disable = true),
   ): Boolean {
-    val nonNullOptions = options ?: UnloadPluginOptions().withDisable(true)
     return updateDescriptorsWithoutRestart(descriptors, load = false) {
-      unloadPluginWithProgress(project, parentComponent, it, nonNullOptions)
+      unloadPluginWithProgress(project, parentComponent, it, options)
     }
   }
 
@@ -406,30 +403,34 @@ object DynamicPlugins {
     var requireMemorySnapshot: Boolean = false,
     var waitForClassloaderUnload: Boolean = false,
     var checkImplementationDetailDependencies: Boolean = true,
-    var unloadWaitTimeout: Int? = null
+    var unloadWaitTimeout: Int? = null,
   ) {
-    fun withUpdate(value: Boolean): UnloadPluginOptions {
-      isUpdate = value; return this
+    fun withUpdate(isUpdate: Boolean): UnloadPluginOptions = also {
+      this.isUpdate = isUpdate
     }
 
-    fun withWaitForClassloaderUnload(value: Boolean): UnloadPluginOptions {
-      waitForClassloaderUnload = value; return this
+    fun withWaitForClassloaderUnload(waitForClassloaderUnload: Boolean) = also {
+      this.waitForClassloaderUnload = waitForClassloaderUnload
     }
 
-    fun withDisable(value: Boolean): UnloadPluginOptions {
-      disable = value; return this
+    fun withDisable(disable: Boolean) = also {
+      this.disable = disable
     }
 
-    fun withRequireMemorySnapshot(value: Boolean): UnloadPluginOptions {
-      requireMemorySnapshot = value; return this
+    fun withRequireMemorySnapshot(requireMemorySnapshot: Boolean) = also {
+      this.requireMemorySnapshot = requireMemorySnapshot
     }
 
-    fun withUnloadWaitTimeout(value: Int): UnloadPluginOptions {
-      unloadWaitTimeout = value; return this
+    fun withUnloadWaitTimeout(unloadWaitTimeout: Int) = also {
+      this.unloadWaitTimeout = unloadWaitTimeout
     }
 
-    fun withSave(value: Boolean): UnloadPluginOptions {
-      save = value; return this
+    fun withSave(save: Boolean) = also {
+      this.save = save
+    }
+
+    fun withCheckImplementationDetailDependencies(checkImplementationDetailDependencies: Boolean) = also {
+      this.checkImplementationDetailDependencies = checkImplementationDetailDependencies
     }
   }
 
@@ -474,7 +475,7 @@ object DynamicPlugins {
           unloadLoadedOptionalDependenciesOnPlugin(pluginDescriptor, pluginSet = pluginSet, classLoaders = classLoaders)
 
           unloadDependencyDescriptors(pluginDescriptor, pluginSet, classLoaders)
-          unloadPluginDescriptorNotRecursively(pluginDescriptor, true)
+          unloadPluginDescriptorNotRecursively(pluginDescriptor)
 
           clearPluginClassLoaderParentListCache()
 
@@ -621,7 +622,7 @@ object DynamicPlugins {
     val dependencyClassloader = dependencyPlugin.classLoader
     processOptionalDependenciesOnPlugin(dependencyPlugin, pluginSet, isLoaded = true) { mainDescriptor, subDescriptor ->
       val classLoader = subDescriptor.classLoader
-      unloadPluginDescriptorNotRecursively(subDescriptor, false)
+      unloadPluginDescriptorNotRecursively(subDescriptor)
 
       // this additional code is required because in unit tests PluginClassLoader is not used
       if (mainDescriptor !== subDescriptor) {
@@ -659,7 +660,7 @@ object DynamicPlugins {
       }
 
       unloadDependencyDescriptors(subDescriptor, pluginSet, classLoaders)
-      unloadPluginDescriptorNotRecursively(subDescriptor, true)
+      unloadPluginDescriptorNotRecursively(subDescriptor)
       subDescriptor.classLoader = null
     }
 
@@ -671,7 +672,7 @@ object DynamicPlugins {
         classLoaders.add(classLoader)
       }
 
-      unloadPluginDescriptorNotRecursively(subDescriptor, true)
+      unloadPluginDescriptorNotRecursively(subDescriptor)
       subDescriptor.classLoader = null
     }
   }
@@ -686,7 +687,7 @@ object DynamicPlugins {
 
   // PluginId cannot be used to unload related resources because one plugin descriptor may consist of several sub descriptors, each of them depends on presense of another plugin,
   // here not the whole plugin is unloaded, but only one part.
-  private fun unloadPluginDescriptorNotRecursively(pluginDescriptor: IdeaPluginDescriptorImpl, clearExtensionPoints: Boolean) {
+  private fun unloadPluginDescriptorNotRecursively(pluginDescriptor: IdeaPluginDescriptorImpl) {
     val app = ApplicationManager.getApplication() as ApplicationImpl
     (ActionManager.getInstance() as ActionManagerImpl).unloadActions(pluginDescriptor)
 
@@ -718,16 +719,12 @@ object DynamicPlugins {
     }
 
     // first, reset all plugin extension points before unregistering, so that listeners don't see plugin in semi-torn-down state
-    processExtensionPoints(pluginDescriptor, openedProjects) { points, area -> area.resetExtensionPoints(points, pluginDescriptor) }
+    processExtensionPoints(pluginDescriptor, openedProjects) { points, area ->
+      area.resetExtensionPoints(points, pluginDescriptor)
+    }
     // unregister plugin extension points
-    processExtensionPoints(pluginDescriptor, openedProjects) { points, area -> area.unregisterExtensionPoints(points, pluginDescriptor) }
-
-    // Sub-descriptors remain in memory when the dependent plugin is unloaded, and the EP declarations will be needed again when
-    // we load the dependent plugin back, so we can't clear the EPs in this situation
-    if (clearExtensionPoints) {
-      pluginDescriptor.appContainerDescriptor.extensionPoints = null
-      pluginDescriptor.projectContainerDescriptor.extensionPoints = null
-      pluginDescriptor.moduleContainerDescriptor.extensionPoints = null
+    processExtensionPoints(pluginDescriptor, openedProjects) { points, area ->
+      area.unregisterExtensionPoints(points, pluginDescriptor)
     }
 
     val pluginId = pluginDescriptor.pluginId

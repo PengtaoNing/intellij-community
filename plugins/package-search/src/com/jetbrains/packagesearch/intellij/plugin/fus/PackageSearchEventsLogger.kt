@@ -11,16 +11,19 @@ import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModule
 import com.jetbrains.packagesearch.intellij.plugin.tryDoing
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.TargetModules
 
+private const val FUS_ENABLED = false
+
 // See the documentation at https://confluence.jetbrains.com/display/FUS/IntelliJ+Reporting+API
 internal class PackageSearchEventsLogger : CounterUsagesCollector() {
 
     override fun getGroup() = GROUP
 
-    override fun getVersion() = 1
+    override fun getVersion() = VERSION
 
     companion object {
 
-        private val GROUP = EventLogGroup(FUSGroupIds.GROUP_ID, 1);
+        private const val VERSION = 2
+        private val GROUP = EventLogGroup(FUSGroupIds.GROUP_ID, VERSION)
 
         // FIELDS
         private val coordinatesField = EventFields.StringValidatedByCustomRule(FUSGroupIds.COORDINATES, FUSGroupIds.COORDINATES)
@@ -38,11 +41,12 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
         internal val preferencesDefaultMavenScopeField =
             EventFields.StringValidatedByCustomRule(FUSGroupIds.PREFERENCES_DEFAULT_MAVEN_SCOPE, FUSGroupIds.PREFERENCES_DEFAULT_MAVEN_SCOPE)
         private val targetModuleNameField = EventFields.String(
-            FUSGroupIds.TARGET_MODULE_NAME, listOfNotNull(
-            TargetModules.None::class.simpleName,
-            TargetModules.One::class.simpleName,
-            TargetModules.All::class.simpleName,
-        )
+            FUSGroupIds.TARGET_MODULE_NAME,
+            listOfNotNull(
+                TargetModules.None::class.simpleName,
+                TargetModules.One::class.simpleName,
+                TargetModules.All::class.simpleName,
+            )
         )
         private val quickFixTypeField = EventFields.Enum(FUSGroupIds.QUICK_FIX_TYPE, FUSGroupIds.QuickFixTypes::class.java)
         private val quickFixFileTypeField = EventFields.StringValidatedByCustomRule(FUSGroupIds.FILE_TYPE, FUSGroupIds.FILE_TYPE)
@@ -53,7 +57,6 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
         private val searchRequestField = EventFields.StringValidatedByCustomRule(FUSGroupIds.SEARCH_QUERY, FUSGroupIds.SEARCH_QUERY)
 
         // EVENTS
-        private val toolWindowFocusedEvent = GROUP.registerEvent(FUSGroupIds.TOOL_WINDOW_FOCUSED)
         private val packageInstalledEvent = GROUP.registerEvent(FUSGroupIds.PACKAGE_INSTALLED, coordinatesField, scopeField, buildSystemField)
         private val packageRemovedEvent = GROUP.registerEvent(FUSGroupIds.PACKAGE_REMOVED, coordinatesField, scopeField, buildSystemField)
         private val packageUpdatedEvent = GROUP.registerEvent(FUSGroupIds.PACKAGE_UPDATED, coordinatesField, scopeField, buildSystemField)
@@ -70,10 +73,6 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
         private val searchQueryClearEvent = GROUP.registerEvent(FUSGroupIds.SEARCH_QUERY_CLEAR)
         private val upgradeAllEvent = GROUP.registerEvent(FUSGroupIds.UPGRADE_ALL)
 
-        fun logToolWindowFocused() {
-            toolWindowFocusedEvent.log()
-        }
-
         private fun EventId3<String?, String?, String?>.logPackage(dependency: UnifiedDependency, targetModule: ProjectModule) = tryDoing {
             val coordinates = dependency.coordinates.displayName
             val scope = dependency.scope
@@ -81,64 +80,68 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
             log(coordinates, scope, buildSystem)
         }
 
-        fun logPackageInstalled(dependency: UnifiedDependency, targetModule: ProjectModule) = tryDoing {
+        fun logPackageInstalled(dependency: UnifiedDependency, targetModule: ProjectModule) = ifLoggingEnabled {
             packageInstalledEvent.logPackage(dependency, targetModule)
         }
 
-        fun logPackageRemoved(dependency: UnifiedDependency, targetModule: ProjectModule) = tryDoing {
+        fun logPackageRemoved(dependency: UnifiedDependency, targetModule: ProjectModule) = ifLoggingEnabled {
             packageRemovedEvent.logPackage(dependency, targetModule)
         }
 
-        fun logPackageUpdated(dependency: UnifiedDependency, targetModule: ProjectModule) = tryDoing {
+        fun logPackageUpdated(dependency: UnifiedDependency, targetModule: ProjectModule) = ifLoggingEnabled {
             packageUpdatedEvent.logPackage(dependency, targetModule)
         }
 
-        fun logRepositoryAdded(model: UnifiedDependencyRepository) = tryDoing {
+        fun logRepositoryAdded(model: UnifiedDependencyRepository) = ifLoggingEnabled {
             repositoryAddedEvent.log(model.id, model.url)
         }
 
-        fun logRepositoryRemoved(model: UnifiedDependencyRepository) = tryDoing {
+        fun logRepositoryRemoved(model: UnifiedDependencyRepository) = ifLoggingEnabled {
             repositoryRemovedEvent.log(model.id, model.url)
         }
 
-        fun logPreferencesChanged(vararg preferences: EventPair<String?>) = tryDoing {
+        fun logPreferencesChanged(vararg preferences: EventPair<String?>) = ifLoggingEnabled {
             preferencesChangedEvent.log(*preferences)
         }
 
-        fun logPreferencesReset() = tryDoing {
+        fun logPreferencesReset() = ifLoggingEnabled {
             preferencesResetEvent.log()
         }
 
-        fun logModuleSelected(targetModuleName: String?) = tryDoing {
+        fun logModuleSelected(targetModuleName: String?) = ifLoggingEnabled {
             moduleSelectedEvent.log(targetModuleName)
         }
 
-        fun logRunQuickFix(type: FUSGroupIds.QuickFixTypes, fileType: String?) = tryDoing {
+        fun logRunQuickFix(type: FUSGroupIds.QuickFixTypes, fileType: String?) = ifLoggingEnabled {
             runQuickFixEvent.log(type, fileType)
         }
 
-        fun logPackageSelected(isInstalled: Boolean) = tryDoing {
+        fun logPackageSelected(isInstalled: Boolean) = ifLoggingEnabled {
             packageSelectedEvent.log(isInstalled)
         }
 
-        fun logDetailsLinkClick(type: FUSGroupIds.DetailsLinkTypes, url: String) = tryDoing {
+        fun logDetailsLinkClick(type: FUSGroupIds.DetailsLinkTypes, url: String) = ifLoggingEnabled {
             detailsLinkClickEvent.log(type, url)
         }
 
-        fun logToggle(type: FUSGroupIds.ToggleTypes, state: Boolean) = tryDoing {
+        fun logToggle(type: FUSGroupIds.ToggleTypes, state: Boolean) = ifLoggingEnabled {
             toggleEvent.log(type, state)
         }
 
-        fun logSearchRequest(query: String) = tryDoing {
+        fun logSearchRequest(query: String) = ifLoggingEnabled {
             searchRequestEvent.log(query)
         }
 
-        fun logSearchQueryClear() = tryDoing {
+        fun logSearchQueryClear() = ifLoggingEnabled {
             searchQueryClearEvent.log()
         }
 
         fun logUpgradeAll() {
             upgradeAllEvent.log()
+        }
+
+        private fun ifLoggingEnabled(action: () -> Unit) {
+            if (FUS_ENABLED) tryDoing { action() }
         }
     }
 }

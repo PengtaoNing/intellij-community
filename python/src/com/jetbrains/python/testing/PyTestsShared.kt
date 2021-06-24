@@ -10,6 +10,7 @@ import com.intellij.execution.testframework.AbstractTestProxy
 import com.intellij.execution.testframework.sm.runner.SMRunnerConsolePropertiesProvider
 import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtil
@@ -48,6 +49,7 @@ import com.jetbrains.python.run.targetBasedConfiguration.TargetWithVariant
 import com.jetbrains.python.run.targetBasedConfiguration.createRefactoringListenerIfPossible
 import com.jetbrains.python.run.targetBasedConfiguration.targetAsPsiElement
 import com.jetbrains.python.sdk.PythonSdkUtil
+import com.jetbrains.python.testing.autoDetectTests.PyAutoDetectionConfigurationFactory
 import com.jetbrains.reflection.DelegationProperty
 import com.jetbrains.reflection.Properties
 import com.jetbrains.reflection.Property
@@ -64,12 +66,13 @@ import java.util.regex.Matcher
  */
 internal val pythonFactories: Array<PyAbstractTestFactory<*>>
   get() = arrayOf(
+    PyAutoDetectionConfigurationFactory(),
     PyTestFactory(),
     PyNoseTestFactory(),
     PyTrialTestFactory(),
     PyUnitTestFactory())
 
-internal val defaultFactory: PyAbstractTestFactory<*> get() = PyUnitTestFactory()
+internal val defaultFactory: PyAbstractTestFactory<*> get() = PyAutoDetectionConfigurationFactory()
 
 fun getFactoryById(id: String): PyAbstractTestFactory<*>? =
   // user may have "pytest" because it was used instead of py.test (old id) for some time
@@ -454,15 +457,17 @@ abstract class PyAbstractTestConfiguration(project: Project,
 
   val testFrameworkName: String = testFactory.name
 
-  /**
-   * @see [RunnersThatRequireTestCaseClass]
-   */
-  fun isTestClassRequired(): ThreeState = if (testFactory.onlyClassesSupported) {
-    ThreeState.YES
+
+  fun isTestClassRequired(): ThreeState {
+    val sdk = sdk ?: return ThreeState.UNSURE
+    return if (testFactory.onlyClassesAreSupported(sdk)) {
+      ThreeState.YES
+    }
+    else {
+      ThreeState.NO
+    }
   }
-  else {
-    ThreeState.NO
-  }
+
 
   /**
    * For real launch use [getWorkingDirectorySafe] instead
@@ -480,7 +485,9 @@ abstract class PyAbstractTestConfiguration(project: Project,
       return dirProvidedByUser
     }
 
-    return target.getElementDirectory(this)?.path ?: super.getWorkingDirectorySafe()
+    return ApplicationManager.getApplication().runReadAction<String> {
+      target.getElementDirectory(this)?.path ?: super.getWorkingDirectorySafe()
+    }
   }
 
   override fun getRefactoringElementListener(element: PsiElement?): RefactoringElementListener? {
@@ -566,8 +573,14 @@ abstract class PyAbstractTestConfiguration(project: Project,
     return emptyList()
   }
 
-  override fun suggestedName(): String =
-    when (target.targetType) {
+  /**
+   * If true, then framework name must be used as part of the run configuration name i.e "pytest: spam.eggs"
+   */
+  protected open val useFrameworkNameInConfiguration = true
+
+  override fun suggestedName(): String {
+    val testFrameworkName = if (useFrameworkNameInConfiguration) testFrameworkName else PyBundle.message("runcfg.test.display_name")
+    return when (target.targetType) {
       PyRunTargetVariant.PATH -> {
         val name = target.asVirtualFile()?.name
         PyBundle.message("runcfg.test.suggest.name.in.path", testFrameworkName, (name ?: target.target))
@@ -579,6 +592,7 @@ abstract class PyAbstractTestConfiguration(project: Project,
         testFrameworkName
       }
     }
+  }
 
 
   /**
@@ -680,7 +694,7 @@ abstract class PyAbstractTestFactory<out CONF_T : PyAbstractTestConfiguration> :
   /**
    * Only UnitTest inheritors are supported
    */
-  abstract val onlyClassesSupported: Boolean
+  abstract fun onlyClassesAreSupported(sdk: Sdk): Boolean
 
   /**
    * Test framework needs package to be installed

@@ -44,6 +44,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
@@ -194,16 +195,17 @@ public final class OldDirectoryCleaner {
     }
 
     @Override
-    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-      if (indicator != null) indicator.checkCanceled();
+    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
       lastUpdated = Math.max(lastUpdated, attrs.lastModifiedTime().toMillis());
-      size += attrs.size();
       entriesToDelete++;
       return FileVisitResult.CONTINUE;
     }
 
     @Override
-    public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+      if (indicator != null) indicator.checkCanceled();
+      lastUpdated = Math.max(lastUpdated, attrs.lastModifiedTime().toMillis());
+      size += attrs.size();
       entriesToDelete++;
       return FileVisitResult.CONTINUE;
     }
@@ -217,7 +219,7 @@ public final class OldDirectoryCleaner {
           NioFiles.deleteRecursively(directory);
         }
         catch (IOException e) {
-          myLogger.error(e);
+          myLogger.info(e);
         }
       }
     }
@@ -252,7 +254,7 @@ public final class OldDirectoryCleaner {
                   });
                 }
                 catch (IOException e) {
-                  myLogger.error(e);
+                  myLogger.info(e);
                   errors.add(directory + " (" + IoErrorText.message(e) + ')');
                 }
               }
@@ -296,7 +298,19 @@ public final class OldDirectoryCleaner {
       table.getColumnModel().getColumn(3).setPreferredWidth(JBUI.scale(120));
       TableCellRenderer renderer = (tbl, value, selected, focused, row, col) -> {
         int alignment = col == 1 ? SwingConstants.LEFT : SwingConstants.RIGHT;
-        return new JBLabel((String)value, alignment).withBorder(JBUI.Borders.empty(0, 5));
+        JBLabel label = new JBLabel((String)value, alignment).withBorder(JBUI.Borders.empty(0, 5));
+        if (row >= 0) {
+          DirectoryGroup group = myModel.myGroups.get(row);
+          if (col == 1) {
+            @NlsSafe String paths = group.directories.stream().map(Path::toString).collect(Collectors.joining("<br>", "<html>", "</html>"));
+            label.setToolTipText(paths);
+          }
+          else if (col == 2) {
+            @NlsSafe String isoDate = FileTime.fromMillis(group.lastUpdated).toString();
+            label.setToolTipText(isoDate);
+          }
+        }
+        return label;
       };
       table.getColumnModel().getColumn(1).setHeaderRenderer(renderer);
       table.getColumnModel().getColumn(1).setCellRenderer(renderer);

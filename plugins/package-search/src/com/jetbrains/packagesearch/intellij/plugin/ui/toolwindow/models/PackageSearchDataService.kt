@@ -36,11 +36,12 @@ import com.jetbrains.packagesearch.intellij.plugin.util.logDebug
 import com.jetbrains.packagesearch.intellij.plugin.util.logError
 import com.jetbrains.packagesearch.intellij.plugin.util.logInfo
 import com.jetbrains.packagesearch.intellij.plugin.util.logTrace
+import com.jetbrains.packagesearch.intellij.plugin.util.logWarn
 import com.jetbrains.packagesearch.intellij.plugin.util.packageSearchModulesChangesFlow
 import com.jetbrains.packagesearch.intellij.plugin.util.replayOnSignal
-import com.jetbrains.rd.util.getOrCreate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,20 +56,18 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import org.apache.commons.lang3.StringUtils
 import org.jetbrains.annotations.Nls
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Locale
+import java.util.concurrent.TimeoutException
 import kotlin.time.hours
 import kotlin.time.milliseconds
-import kotlin.time.seconds
 
 internal class PackageSearchDataService(
     override val project: Project
 ) : RootDataModelProvider, SearchClient, TargetModuleSetter, SelectedPackageSetter, OperationExecutor, CoroutineScope by project.lifecycleScope {
-
-    private val apiTimeout = 10.seconds
 
     private val configuration = PackageSearchGeneralConfiguration.getInstance(project)
 
@@ -145,6 +144,13 @@ internal class PackageSearchDataService(
         }
 
         searchQueryState.onEach { performSearch(it, TraceInfo(TraceInfo.TraceSource.SEARCH_QUERY)) }
+            .catch { error ->
+                when (error) {
+                    is TimeoutCancellationException, is TimeoutException, is SocketTimeoutException ->
+                        showErrorNotification(message = PackageSearchBundle.message("packagesearch.search.client.searching.failed.timeout"))
+                    else -> logError("searchQueryState", error) { "Error while retrieving search results." }
+                }
+            }
             .launchIn(this)
     }
 
@@ -157,7 +163,7 @@ internal class PackageSearchDataService(
     private suspend fun refreshKnownRepositories(traceInfo: TraceInfo) = coroutineScope {
         setStatus(isRefreshingData = true)
         logDebug(traceInfo, "PKGSDataService#refreshKnownRepositories()") { "Refreshing known repositories from API..." }
-        withTimeout(apiTimeout) { dataProvider.fetchKnownRepositories() }
+        dataProvider.fetchKnownRepositories()
             .onFailure { logError(traceInfo, "refreshKnownRepositories()", it) { "Failed to refresh known repositories list." } }
             .onSuccess {
                 logInfo(traceInfo, "refreshKnownRepositories()") { "Known repositories refreshed. We know of ${it.size} repo(s). Refreshing data..." }
@@ -176,7 +182,7 @@ internal class PackageSearchDataService(
 
         setStatus(isSearching = true)
 
-        withTimeout(apiTimeout) { dataProvider.doSearch(query, filterOptionsState.value) }
+        dataProvider.doSearch(query, filterOptionsState.value)
             .onFailure {
                 logError(traceInfo, "performSearch()") { "Search failed for query '$query': ${it.message}" }
                 showErrorNotification(
@@ -279,9 +285,7 @@ internal class PackageSearchDataService(
         val installedDependencies = dependenciesByModule.values.flatten()
             .mapNotNull { InstalledDependency.from(it) }
 
-        val dependencyRemoteInfoMap = withTimeout(apiTimeout) {
-            dataProvider.fetchInfoFor(installedDependencies, traceInfo)
-        }
+        val dependencyRemoteInfoMap = dataProvider.fetchInfoFor(installedDependencies, traceInfo)
 
         return usageInfoByDependency.mapNotNull { (dependency, usageInfo) ->
             val installedDependency = InstalledDependency.from(dependency)
@@ -399,6 +403,12 @@ internal class PackageSearchDataService(
         return PackagesToUpdate(updatesByModule)
     }
 
+    private inline fun <K : Any, V : Any> MutableMap<K, V>.getOrCreate(key: K, crossinline creator: (K) -> V): V =
+        this[key] ?: creator(key).let {
+            this[key] = it
+            return it
+        }
+
     private fun computeHeaderData(
         installed: List<PackageModel.Installed>,
         installable: List<PackageModel.SearchResult>,
@@ -472,10 +482,17 @@ internal class PackageSearchDataService(
         runReadAction {
             FileEditorManager.getInstance(project).openFiles.asSequence()
                 .filter { virtualFile ->
-                    val file = PsiUtil.getPsiFile(project, virtualFile)
-                    ProjectModuleOperationProvider.forProjectPsiFileOrNull(project, file)
-                        ?.hasSupportFor(project, file)
-                        ?: false
+                    try {
+                        val file = PsiUtil.getPsiFile(project, virtualFile)
+                        ProjectModuleOperationProvider.forProjectPsiFileOrNull(project, file)
+                            ?.hasSupportFor(project, file)
+                            ?: false
+                    } catch (e: Throwable) {
+                        logWarn(contextName = "PackageSearchDataService#rerunHighlightingOnOpenBuildFiles", e) {
+                            "Error while filtering open files to trigger highlight rerun for"
+                        }
+                        false
+                    }
                 }
                 .mapNotNull { psiManager.findFile(it) }
                 .forEach { daemonCodeAnalyzer.restart(it) }

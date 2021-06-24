@@ -1944,6 +1944,36 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
                 runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSum2.kt");
             }
 
+            @TestMetadata("mapSumWithDouble.kt")
+            public void testMapSumWithDouble() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSumWithDouble.kt");
+            }
+
+            @TestMetadata("mapSumWithFloat.kt")
+            public void testMapSumWithFloat() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSumWithFloat.kt");
+            }
+
+            @TestMetadata("mapSumWithInt.kt")
+            public void testMapSumWithInt() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSumWithInt.kt");
+            }
+
+            @TestMetadata("mapSumWithLong.kt")
+            public void testMapSumWithLong() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSumWithLong.kt");
+            }
+
+            @TestMetadata("mapSumWithUInt.kt")
+            public void testMapSumWithUInt() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSumWithUInt.kt");
+            }
+
+            @TestMetadata("mapSumWithULong.kt")
+            public void testMapSumWithULong() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapSumWithULong.kt");
+            }
+
             @TestMetadata("mapToMap.kt")
             public void testMapToMap() throws Exception {
                 runTest("testData/inspectionsLocal/collections/simplifiableCallChain/mapToMap.kt");
@@ -4556,6 +4586,26 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/dfa/anyIsString.kt");
         }
 
+        @TestMetadata("arrayBasic.kt")
+        public void testArrayBasic() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/arrayBasic.kt");
+        }
+
+        @TestMetadata("arrayIndex.kt")
+        public void testArrayIndex() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/arrayIndex.kt");
+        }
+
+        @TestMetadata("arrayIndex2.kt")
+        public void testArrayIndex2() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/arrayIndex2.kt");
+        }
+
+        @TestMetadata("assertNotNull.kt")
+        public void testAssertNotNull() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/assertNotNull.kt");
+        }
+
         @TestMetadata("assignment.kt")
         public void testAssignment() throws Exception {
             runTest("testData/inspectionsLocal/dfa/assignment.kt");
@@ -4574,6 +4624,21 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("basicIn2.kt")
         public void testBasicIn2() throws Exception {
             runTest("testData/inspectionsLocal/dfa/basicIn2.kt");
+        }
+
+        @TestMetadata("basicIn3.kt")
+        public void testBasicIn3() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/basicIn3.kt");
+        }
+
+        @TestMetadata("basicIn4.kt")
+        public void testBasicIn4() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/basicIn4.kt");
+        }
+
+        @TestMetadata("basicIn5.kt")
+        public void testBasicIn5() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/basicIn5.kt");
         }
 
         @TestMetadata("basicIs.kt")
@@ -4676,6 +4741,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/dfa/elvisSimple.kt");
         }
 
+        @TestMetadata("inLongUntil.kt")
+        public void testInLongUntil() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/inLongUntil.kt");
+        }
+
         @TestMetadata("intBoxed.kt")
         public void testIntBoxed() throws Exception {
             runTest("testData/inspectionsLocal/dfa/intBoxed.kt");
@@ -4714,6 +4784,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("returnLiteral.kt")
         public void testReturnLiteral() throws Exception {
             runTest("testData/inspectionsLocal/dfa/returnLiteral.kt");
+        }
+
+        @TestMetadata("senselessDiagnosticDuplicate.kt")
+        public void testSenselessDiagnosticDuplicate() throws Exception {
+            runTest("testData/inspectionsLocal/dfa/senselessDiagnosticDuplicate.kt");
         }
 
         @TestMetadata("shiftLeft.kt")
@@ -5091,6 +5166,119 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("variableWithSameNameFunction.kt")
         public void testVariableWithSameNameFunction() throws Exception {
             runTest("testData/inspectionsLocal/explicitThis/variableWithSameNameFunction.kt");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("testData/inspectionsLocal/floatingPointLiteralPrecision")
+    public static class FloatingPointLiteralPrecision extends AbstractLocalInspectionTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        @TestMetadata("doublePi11.kt")
+        public void testDoublePi11() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doublePi11.kt");
+        }
+
+        @TestMetadata("doubleRounding1.kt")
+        public void testDoubleRounding1() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding1.kt");
+        }
+
+        @TestMetadata("doubleRounding2.kt")
+        public void testDoubleRounding2() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding2.kt");
+        }
+
+        @TestMetadata("doubleRounding3.kt")
+        public void testDoubleRounding3() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding3.kt");
+        }
+
+        @TestMetadata("doubleRounding4.kt")
+        public void testDoubleRounding4() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding4.kt");
+        }
+
+        @TestMetadata("doubleRounding5.kt")
+        public void testDoubleRounding5() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding5.kt");
+        }
+
+        @TestMetadata("doubleRounding6.kt")
+        public void testDoubleRounding6() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding6.kt");
+        }
+
+        @TestMetadata("doubleRounding7.kt")
+        public void testDoubleRounding7() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding7.kt");
+        }
+
+        @TestMetadata("doubleRounding8.kt")
+        public void testDoubleRounding8() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding8.kt");
+        }
+
+        @TestMetadata("doubleRounding9.kt")
+        public void testDoubleRounding9() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/doubleRounding9.kt");
+        }
+
+        @TestMetadata("floatKeepSuffixCase1.kt")
+        public void testFloatKeepSuffixCase1() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatKeepSuffixCase1.kt");
+        }
+
+        @TestMetadata("floatKeepSuffixCase2.kt")
+        public void testFloatKeepSuffixCase2() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatKeepSuffixCase2.kt");
+        }
+
+        @TestMetadata("floatLargeInteger.kt")
+        public void testFloatLargeInteger() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatLargeInteger.kt");
+        }
+
+        @TestMetadata("floatPi6Digits.kt")
+        public void testFloatPi6Digits() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatPi6Digits.kt");
+        }
+
+        @TestMetadata("floatPi7Digits.kt")
+        public void testFloatPi7Digits() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatPi7Digits.kt");
+        }
+
+        @TestMetadata("floatRounding1.kt")
+        public void testFloatRounding1() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatRounding1.kt");
+        }
+
+        @TestMetadata("floatRounding2.kt")
+        public void testFloatRounding2() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatRounding2.kt");
+        }
+
+        @TestMetadata("floatRounding3.kt")
+        public void testFloatRounding3() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatRounding3.kt");
+        }
+
+        @TestMetadata("floatRounding4.kt")
+        public void testFloatRounding4() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatRounding4.kt");
+        }
+
+        @TestMetadata("floatRounding5.kt")
+        public void testFloatRounding5() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatRounding5.kt");
+        }
+
+        @TestMetadata("floatRounding6.kt")
+        public void testFloatRounding6() throws Exception {
+            runTest("testData/inspectionsLocal/floatingPointLiteralPrecision/floatRounding6.kt");
         }
     }
 
@@ -7855,6 +8043,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("interface.kt")
         public void testInterface() throws Exception {
             runTest("testData/inspectionsLocal/redundantExplicitType/interface.kt");
+        }
+
+        @TestMetadata("interfaceWithCompanionObject.kt")
+        public void testInterfaceWithCompanionObject() throws Exception {
+            runTest("testData/inspectionsLocal/redundantExplicitType/interfaceWithCompanionObject.kt");
         }
 
         @TestMetadata("long.kt")

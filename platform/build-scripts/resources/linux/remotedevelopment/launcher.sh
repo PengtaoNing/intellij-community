@@ -108,10 +108,29 @@ echo "> Setup Remote Development Host default configuration"
 IJ_HOST_CONFIG_DIR="$HOME/.CwmHost-IU-config"
 IJ_STORED_HOST_PASSWD="$IJ_HOST_CONFIG_DIR/cwm-passwd"
 
-# shellcheck disable=SC2016
-printf '\nidea.config.path=${user.home}/.CwmHost-IU-config\nidea.system.path=${user.home}/.CwmHost-IU-system\n' >> "$IDE_BIN_HOME/idea.properties"
-printf '\njb.privacy.policy.text="<!--999.999-->"\njb.consents.confirmation.enabled=false\nidea.initially.ask.config=force-not\nide.show.tips.on.startup.default.value=false' >> "$IDE_BIN_HOME/idea.properties"
-printf '\ncodeWithMe.voiceChat.enabled=false' >> "$IDE_BIN_HOME/idea.properties"
+REMOTE_DEV_PROPERTIES="$IDE_HOME/remotedevelopment/idea.remotedev.properties"
+
+if [ ! -f "$REMOTE_DEV_PROPERTIES" ]; then
+
+  # shellcheck disable=SC2016
+  #TODO: use IDE-specific properties file
+  cat "$IDE_BIN_HOME/idea.properties" > "$REMOTE_DEV_PROPERTIES"
+  #TODO: use IDE-specific folder
+  printf '\nidea.config.path=${user.home}/.CwmHost-IU-config\nidea.system.path=${user.home}/.CwmHost-IU-system\n' >> "$REMOTE_DEV_PROPERTIES"
+
+  #TODO: remove once all of this is disabled for remote dev
+  printf '\njb.privacy.policy.text="<!--999.999-->"\njb.consents.confirmation.enabled=false\nidea.initially.ask.config=force-not\nide.show.tips.on.startup.default.value=false' >> "$REMOTE_DEV_PROPERTIES"
+  printf '\ncodeWithMe.voiceChat.enabled=false' >> "$REMOTE_DEV_PROPERTIES"
+
+  #TODO: disable once IDEA doesn't require JBA login for remote dev
+  printf '\neap.login.enabled=false' >> "$REMOTE_DEV_PROPERTIES"
+
+  #TODO: disable once these exceptions are no longer incredibly spammy
+  printf '\nide.slow.operations.assertion=false' >> "$REMOTE_DEV_PROPERTIES"
+
+fi
+
+export IDE_PROPERTIES_PROPERTY="-Didea.properties.file=$REMOTE_DEV_PROPERTIES"
 
 # Prevent config import dialog
 if [ ! -d "$IJ_HOST_CONFIG_DIR" ]; then
@@ -130,7 +149,7 @@ if [ -z "${1-}" ]; then
   exit 1
 fi
 
-if [ "$1" = "cwmHost" ] && [ ! -f "$IJ_STORED_HOST_PASSWD" ] && [ -z "${CWM_NO_PASSWORD-}" ]; then
+if [ "$1" = "cwmHost" ] && [ ! -f "$IJ_STORED_HOST_PASSWD" ] && [ -z "${CWM_NO_PASSWORD-}" ]  && [ -z "${CWM_HOST_PASSWORD-}" ]; then
   echo "Enter a password that will be used to connect to the host"
   stty -echo
   read -r CWM_HOST_PASSWORD

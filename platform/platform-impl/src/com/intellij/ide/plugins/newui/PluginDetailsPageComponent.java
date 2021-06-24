@@ -8,8 +8,11 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.plugins.*;
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
+import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.IdeUrlTrackingParametersProvider;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.text.HtmlChunk;
@@ -54,7 +57,7 @@ import java.util.function.Consumer;
  */
 public class PluginDetailsPageComponent extends MultiPanel {
 
-  private static final String MARKETPLACE_LINK = "https://plugins.jetbrains.com/plugin/index?xmlId=";
+  private static final String MARKETPLACE_LINK = "/plugin/index?xmlId=";
 
   private final MyPluginModel myPluginModel;
   private final LinkListener<Object> mySearchListener;
@@ -250,7 +253,10 @@ public class PluginDetailsPageComponent extends MultiPanel {
 
   public void setOnlyUpdateMode() {
     myNameAndButtons.removeButtons();
-    myEnabledForProject.getParent().remove(myEnabledForProject);
+    Container parent = myEnabledForProject.getParent();
+    if (parent != null) {
+      parent.remove(myEnabledForProject);
+    }
     myPanel.setBorder(JBUI.Borders.empty(15, 20, 0, 0));
     myEmptyPanel.setBorder(null);
   }
@@ -470,7 +476,7 @@ public class PluginDetailsPageComponent extends MultiPanel {
             ApplicationManager.getApplication().invokeLater(() -> {
               if (myShowComponent == component) {
                 stopLoading();
-                showPluginImpl(component);
+                showPluginImpl(component.getPluginDescriptor(), component.myUpdateDescriptor);
               }
             }, ModalityState.stateForComponent(component));
           });
@@ -478,14 +484,14 @@ public class PluginDetailsPageComponent extends MultiPanel {
       }
 
       if (syncLoading) {
-        showPluginImpl(component);
+        showPluginImpl(component.getPluginDescriptor(), component.myUpdateDescriptor);
       }
     }
   }
 
-  private void showPluginImpl(@NotNull ListPluginComponent component) {
-    myPlugin = component.getPluginDescriptor();
-    myUpdateDescriptor = component.myUpdateDescriptor;
+  public void showPluginImpl(@NotNull IdeaPluginDescriptor pluginDescriptor, @Nullable IdeaPluginDescriptor updateDescriptor) {
+    myPlugin = pluginDescriptor;
+    myUpdateDescriptor = updateDescriptor;
     showPlugin();
     select(0, true);
   }
@@ -586,8 +592,10 @@ public class PluginDetailsPageComponent extends MultiPanel {
     else {
       myHomePage.show(IdeBundle.message(
                         "plugins.configurable.plugin.homepage.link"),
-                      () -> BrowserUtil.browse(MARKETPLACE_LINK + URLUtil.encodeURIComponent(myPlugin.getPluginId().getIdString()))
-      );
+                      () -> {
+                        String url = ((ApplicationInfoEx) ApplicationInfo.getInstance()).getPluginManagerUrl() + MARKETPLACE_LINK + URLUtil.encodeURIComponent(myPlugin.getPluginId().getIdString());
+                        BrowserUtil.browse(IdeUrlTrackingParametersProvider.getInstance().augmentUrl(url));
+                      });
     }
 
     IdeaPluginDescriptor pluginNode = myUpdateDescriptor != null ? myUpdateDescriptor : myPlugin;

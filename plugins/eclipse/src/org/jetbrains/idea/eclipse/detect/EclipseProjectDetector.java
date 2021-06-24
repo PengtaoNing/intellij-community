@@ -91,6 +91,7 @@ class EclipseProjectDetector extends ProjectDetector {
         if (group == null) {
           group = new ProjectGroup(groupName);
           group.setBottomGroup(true);
+          group.setProjectOpenedLogger(() -> EclipseProjectDetectorUsagesCollector.logProjectOpened(false));
           group.setProjects(new ArrayList<>(set));
           manager.addGroup(group);
         }
@@ -116,8 +117,7 @@ class EclipseProjectDetector extends ProjectDetector {
         scanForProjects(workspace, projects);
       }
     }
-    catch (IOException e) {
-      LOG.info(e);
+    catch (IOException ignore) {
     }
   }
 

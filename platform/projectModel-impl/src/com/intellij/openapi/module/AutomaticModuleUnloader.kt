@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.workspaceModel.storage.WorkspaceEntityStorage
 
 interface AutomaticModuleUnloader {
-  fun processNewModules(modulesToLoad: Set<ModulePath>, modulesToUnload: List<UnloadedModuleDescriptionImpl>): UnloadedModulesListChange
   fun processNewModules(currentModules: Set<String>, storage: WorkspaceEntityStorage)
   fun setLoadedModules(modules: List<String>)
 
@@ -16,6 +15,12 @@ interface AutomaticModuleUnloader {
     @JvmStatic
     fun getInstance(project: Project) = project.service<AutomaticModuleUnloader>()
   }
+}
+
+class DummyAutomaticModuleUnloader : AutomaticModuleUnloader {
+  override fun processNewModules(currentModules: Set<String>, storage: WorkspaceEntityStorage) {}
+
+  override fun setLoadedModules(modules: List<String>) {}
 }
 
 class UnloadedModulesListChange(val toLoad: List<ModulePath>, val toUnload: List<ModulePath>, val toUnloadDescriptions: List<UnloadedModuleDescriptionImpl>)

@@ -7,6 +7,7 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.ide.plugins.*;
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
+import com.intellij.ide.ui.PluginBooleanOptionDescriptor;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
@@ -212,7 +213,7 @@ public class MyPluginModel extends InstalledPluginsTableModel implements PluginE
       IdeaPluginDescriptor descriptor = entry.getKey();
       PluginId pluginId = descriptor.getPluginId();
 
-      if (descriptor.isImplementationDetail() || /* implementation detail plugins are never explicitly disabled */
+      if (isHidden(descriptor) ||
           !isLoaded(pluginId) /* if enableMap contains null for id => enable/disable checkbox don't touch */) {
         continue;
       }
@@ -806,20 +807,16 @@ public class MyPluginModel extends InstalledPluginsTableModel implements PluginE
   boolean isRequiredPluginForProject(@NotNull PluginId pluginId) {
     Project project = getProject();
     return project != null &&
-           myRequiredPluginsForProject.computeIfAbsent(
-             pluginId,
-             id -> ContainerUtil.exists(
-               getDependenciesOnPlugins(project),
-               id.getIdString()::equals
-             )
-           );
+           myRequiredPluginsForProject
+             .computeIfAbsent(pluginId,
+                              id -> ContainerUtil.exists(getDependenciesOnPlugins(project),
+                                                         id.getIdString()::equals));
   }
 
   boolean requiresRestart(@NotNull IdeaPluginDescriptor descriptor) {
-    return myRequiresRestart.computeIfAbsent(
-      descriptor instanceof IdeaPluginDescriptorImpl ? (IdeaPluginDescriptorImpl)descriptor : null,
-      it -> it == null || DynamicPlugins.checkCanUnloadWithoutRestart(it) != null
-    );
+    return myRequiresRestart
+      .computeIfAbsent(descriptor instanceof IdeaPluginDescriptorImpl ? (IdeaPluginDescriptorImpl)descriptor : null,
+                       it -> it == null || DynamicPlugins.checkCanUnloadWithoutRestart(it) != null);
   }
 
   boolean isUninstalled(@NotNull IdeaPluginDescriptor descriptor) {
@@ -1056,39 +1053,36 @@ public class MyPluginModel extends InstalledPluginsTableModel implements PluginE
     return CustomPluginRepositoryService.getInstance().getCustomRepositoryPlugins();
   }
 
-  // todo remove code duplication
-  @NotNull List<? extends IdeaPluginDescriptor> getDependents(@NotNull IdeaPluginDescriptor rootDescriptor) {
+  /**
+   * TODO unify
+   *
+   * @see {@link PluginBooleanOptionDescriptor#getPluginsIdsToDisable(IdeaPluginDescriptor)}
+   */
+  @NotNull List<IdeaPluginDescriptorImpl> getDependents(@NotNull IdeaPluginDescriptor rootDescriptor) {
     ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
     PluginId rootId = rootDescriptor.getPluginId();
 
-    List<IdeaPluginDescriptor> result = new ArrayList<>();
-    for (IdeaPluginDescriptor plugin : getAllPlugins()) {
-      PluginId pluginId = plugin.getPluginId();
+    List<IdeaPluginDescriptorImpl> result = new ArrayList<>();
+    for (IdeaPluginDescriptor descriptor : getAllPlugins()) {
+      PluginId pluginId = descriptor.getPluginId();
       if (Objects.equals(pluginId, rootId) ||
           appInfo.isEssentialPlugin(pluginId) ||
-          !plugin.isEnabled() ||
-          plugin.isImplementationDetail()) {
+          !(descriptor instanceof IdeaPluginDescriptorImpl) ||
+          !descriptor.isEnabled() ||
+          isHidden(descriptor)) {
         continue;
       }
 
-      if (!(plugin instanceof IdeaPluginDescriptorImpl)) {
-        continue;
-      }
-
-      IdeaPluginDescriptorImpl pluginDescriptor = (IdeaPluginDescriptorImpl)plugin;
-      if (pluginDescriptor.isDeleted()) {
-        continue;
-      }
-
-      PluginManagerCore.processAllDependencies(pluginDescriptor, false, descriptor -> {
-        if (Objects.equals(descriptor.getPluginId(), rootId)) {
-          result.add(plugin);
+      IdeaPluginDescriptorImpl descriptorImpl = (IdeaPluginDescriptorImpl)descriptor;
+      PluginManagerCore.processAllDependencies(descriptorImpl, false, dependency -> {
+        if (Objects.equals(dependency.getPluginId(), rootId)) {
+          result.add(descriptorImpl);
           return FileVisitResult.TERMINATE;
         }
         return FileVisitResult.CONTINUE;
       });
     }
-    return result;
+    return Collections.unmodifiableList(result);
   }
 
   private final Map<String, Icon> myIcons = new HashMap<>(); // local cache for PluginLogo WeakValueMap

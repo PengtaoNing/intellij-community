@@ -907,7 +907,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   public void visitLiteralExpression(PsiLiteralExpression expression) {
     super.visitLiteralExpression(expression);
 
-    if (!myHolder.hasErrorResults() && expression.textMatches(PsiKeyword.NULL) && expression.getParent() instanceof PsiCaseLabelElementList) {
+    if (!myHolder.hasErrorResults() && expression.getParent() instanceof PsiCaseLabelElementList && expression.textMatches(PsiKeyword.NULL)) {
       myHolder.add(checkFeature(expression, HighlightingFeature.PATTERNS_IN_SWITCH));
     }
 
@@ -1806,9 +1806,10 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   }
 
   private void checkSwitchBlock(@NotNull PsiSwitchBlock switchBlock) {
-    if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkSwitchBlockStatements(switchBlock, myLanguageLevel, myFile));
-    if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkSwitchSelectorType(switchBlock, myLanguageLevel));
-    if (!myHolder.hasErrorResults()) myHolder.addAll(HighlightUtil.checkSwitchLabelValues(switchBlock));
+    SwitchBlockHighlightingModel model = SwitchBlockHighlightingModel.createInstance(myLanguageLevel, switchBlock, myFile);
+    if (!myHolder.hasErrorResults()) myHolder.addAll(model.checkSwitchBlockStatements());
+    if (!myHolder.hasErrorResults()) myHolder.addAll(model.checkSwitchSelectorType());
+    if (!myHolder.hasErrorResults()) myHolder.addAll(model.checkSwitchLabelValues());
   }
 
   @Override
